@@ -1,3 +1,12 @@
+//! The editor.
+//!
+//! Some terminology:
+//!
+//! * BOF: beginning of file.
+//! * BOL: beginning of line.
+//! * EOL: end of line.
+//! * EOF: end of file.
+
 const std = @import("std");
 const heap = std.heap;
 const fs = std.fs;
@@ -9,9 +18,9 @@ const terminal = @import("terminal.zig");
 const Position = @import("root").Position;
 
 /// This is used for all data that needs to persist throughout the program,
-/// such as the lines to edit.
+/// such as `lines`.
 var arena_allocator = heap.ArenaAllocator.init(heap.page_allocator);
-/// The content to edit.
+/// The content to be edited.
 ///
 /// There is an important performance aspect of separating all the content by lines.
 /// We frequently do insert operations on the individual `ArrayList(u8)`s that take O(n) because
@@ -280,10 +289,11 @@ const cursor = struct {
 
     /// Returns the character before the cursor.
     ///
-    /// If the cursor is at the start of the line, this returns `null`.
+    /// If the cursor is at BOL, this returns `null`.
     fn getPreviousCharIndex() ?u16 {
         if (cursor.position.column == 0) {
             // There is no character before this
+            // TODO: get the last character of the previous line
             return null;
         } else {
             return cursor.position.column - 1;
