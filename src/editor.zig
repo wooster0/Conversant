@@ -263,15 +263,15 @@ const cursor = struct {
     }
 
     fn insert(char: u8) !void {
-        var current_line = getCurrentLine();
+        const current_line = getCurrentLine();
         try current_line.insert(position.column, char);
         position.column += 1;
     }
 
     fn insertSlice(slice: []const u8) !void {
-        var current_line = getCurrentLine();
+        const current_line = getCurrentLine();
         try current_line.insertSlice(position.column, slice);
-        position.column += @intCast(u16,slice.len);
+        position.column += @intCast(u16, slice.len);
     }
 
     fn getCurrentLine() *ArrayList(u8) {
