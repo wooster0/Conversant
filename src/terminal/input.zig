@@ -15,6 +15,8 @@ const Key = union(enum) {
     enter,
     tab,
     backspace: Modifier,
+    delete: Modifier,
+
     esc,
 };
 
@@ -48,9 +50,18 @@ fn parseInput(buffer: []const u8) Key {
                         'B' => return .down,
                         'C' => return .right,
                         'D' => return .left,
+                        '3' => {
+                            if (buffer.len < 4)
+                                unreachable;
+                            if (buffer[3] == '~')
+                                return .{ .delete = .none }
+                            else
+                                unreachable;
+                        },
                         else => unreachable,
                     }
                 },
+                'd' => return .{ .delete = .ctrl },
                 else => unreachable,
             }
         },

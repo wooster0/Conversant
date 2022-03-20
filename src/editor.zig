@@ -177,6 +177,7 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
                             if (current_line.items[char_to_remove_index] == ' ') {
                                 if (remove_spaces) {
                                     cursor.removeCurrentLineChar(char_to_remove_index);
+                                    cursor.position.column -= 1;
                                     const space_removed = cursor.removePreviousSuccessiveSpaces();
                                     if (space_removed) {
                                         break;
@@ -191,6 +192,7 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
                             }
 
                             cursor.removeCurrentLineChar(char_to_remove_index);
+                            cursor.position.column -= 1;
                         } else {
                             break;
                         }
@@ -198,6 +200,19 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
                 },
             }
         },
+        .delete => |modifier| {
+            switch (modifier) {
+                .none => {
+                    // Remove a single character
+                    if (cursor.getCurrentCharIndex()) |char_to_remove_index| {
+                        const current_line = cursor.getCurrentLine();
+                        _ = current_line.orderedRemove(char_to_remove_index);
+                    }
+                },
+                .ctrl => {},
+            }
+        },
+
         .esc => return .Exit,
     }
     return null;
@@ -300,10 +315,22 @@ const cursor = struct {
         }
     }
 
+    /// Returns the character on the cursor.
+    ///
+    /// If the cursor is at the EOL, this returns `null`.
+    fn getCurrentCharIndex() ?u16 {
+        if (cursor.position.column == getCurrentLine().items.len) {
+            // There is no character before this
+            // TODO: get the first character of the next line
+            return null;
+        } else {
+            return cursor.position.column;
+        }
+    }
+
     fn removeCurrentLineChar(index: u16) void {
         const current_line = cursor.getCurrentLine();
         _ = current_line.orderedRemove(index);
-        cursor.position.column -= 1;
     }
 
     /// Removes all consecutive spaces before the cursor
@@ -315,6 +342,7 @@ const cursor = struct {
             if (cursor.getPreviousCharIndex()) |char_to_remove_index| {
                 if (current_line.items[char_to_remove_index] == ' ') {
                     cursor.removeCurrentLineChar(char_to_remove_index);
+                    position.column -= 1;
                     space_removed = true;
                     continue;
                 }
