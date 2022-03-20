@@ -8,10 +8,11 @@ const io = std.io;
 const os = std.os;
 const fmt = std.fmt;
 
+usingnamespace @import("terminal/input.zig");
+
 const Position = @import("root").Position;
 const Size = @import("root").Size;
 
-const stdin = io.getStdIn();
 const stdout = io.getStdOut();
 
 const writing = struct {
@@ -57,65 +58,6 @@ fn getSize() !Size {
         .SUCCESS => return Size{ .width = winsize.ws_col, .height = winsize.ws_row },
         else => |err| return os.unexpectedErrno(err),
     }
-}
-
-const stdin_reader = stdin.reader();
-pub fn readInput() !Input {
-    var buffer = [1]u8{undefined} ** 4;
-    var bytes_read = try stdin_reader.read(&buffer);
-    // debug("{any}", .{buffer[0..bytes_read]});
-
-    return parseInput(buffer[0..bytes_read]);
-}
-
-/// The key that was pressed in addition.
-const Modifier = enum {
-    ctrl,
-    none,
-};
-
-const Input = union(enum) {
-    char: u8,
-
-    up,
-    down,
-    left,
-    right,
-
-    enter,
-    tab,
-    backspace: Modifier,
-    esc,
-};
-
-fn parseInput(buffer: []const u8) Input {
-    if (buffer.len == 0)
-        unreachable;
-    return switch (buffer[0]) {
-        '\x1b' => {
-            if (buffer.len == 1)
-                return .esc;
-            switch (buffer[1]) {
-                '[' => {
-                    if (buffer.len < 3)
-                        unreachable;
-                    switch (buffer[2]) {
-                        'A' => return .up,
-                        'B' => return .down,
-                        'C' => return .right,
-                        'D' => return .left,
-                        else => unreachable,
-                    }
-                },
-                else => unreachable,
-            }
-        },
-        '\r' => .enter,
-        '\t' => .tab,
-        0x7F => .{ .backspace = .none },
-        0x17 => .{ .backspace = .ctrl },
-        else => .{ .char = buffer[0] },
-    };
 }
 
 const CSI = "\x1b[";
