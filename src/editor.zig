@@ -11,6 +11,22 @@ const Position = @import("root").Position;
 /// This is used for all data that needs to persist throughout the program,
 /// such as the lines to edit.
 var arena_allocator = heap.ArenaAllocator.init(heap.page_allocator);
+/// The content to edit.
+///
+/// There is an important performance aspect of separating all the content by lines.
+/// We frequently do insert operations on the individual `ArrayList(u8)`s that take O(n) because
+/// we have to copy and move all data after the insert index.
+/// These operations are very fast in our case because we separate all the content
+/// and so there isn't a lot to copy.
+///
+/// But if we instead choose to have all content in one big `ArrayList(u8)` and we have a file
+/// of 100,000 lines and we insert a character after the 50,000th character, the operation
+/// will take quite long because all data after that point has to copied and moved
+/// to make space for that one new character.
+///
+/// In addition, to properly draw the lines, we would have to split up the content into separate lines
+/// on the fly all the time.
+/// In our case, we don't have to do any of that.
 var lines: ArrayList(ArrayList(u8)) = undefined;
 
 pub fn open(path: [:0]const u8) !void {

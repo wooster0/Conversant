@@ -1,5 +1,7 @@
 //! This abstracts everything related to the terminal and provides everything needed for
-//! display  and manipulation.
+//! display, manipulation, and input events.
+//!
+//! One great reference for this is <https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>.
 
 const std = @import("std");
 const io = std.io;
