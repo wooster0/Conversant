@@ -67,10 +67,38 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
     switch (input) {
         .char => |char| try cursor.insert(char),
 
-        .up => cursor.position.row -|= 1,
-        .down => cursor.position.row += 1,
-        .left => cursor.position.column -|= 1,
-        .right => cursor.position.column += 1,
+        .up => {
+            cursor.position.row -|= 1;
+            cursor.correctColumn();
+        },
+        .down => {
+            if (cursor.position.row != lines.items.len - 1) {
+                cursor.position.row += 1;
+                cursor.correctColumn();
+            }
+        },
+        .left => {
+            if (cursor.position.column == 0) {
+                // Wrap back to the previous line's end if we're not at BOF (beginning of file)
+                if (cursor.position.row != 0) {
+                    cursor.position.row -= 1;
+                    cursor.position.column = @intCast(u16, cursor.getCurrentLine().items.len);
+                }
+            } else {
+                cursor.position.column -|= 1;
+            }
+        },
+        .right => {
+            if (cursor.position.column == cursor.getCurrentLine().items.len) {
+                // Wrap to the next line's start if we're not at EOF (end of file)
+                if (cursor.position.row != lines.items.len - 1) {
+                    cursor.position.row += 1;
+                    cursor.position.column = 0;
+                }
+            } else {
+                cursor.position.column += 1;
+            }
+        },
 
         .enter => {
             //
@@ -171,10 +199,11 @@ const cursor = struct {
 
         // Write the character that's below the cursor
         const current_line = getCurrentLine().items;
-        if (current_line.len == 0) {
-            try terminal.write(" ");
+        if (position.column >= current_line.len) {
+            // If the index would be out of bounds, still draw the cursor
+            try terminal.writeByte(' ');
         } else {
-            try terminal.write(&[1]u8{current_line[position.column]});
+            try terminal.writeByte(current_line[position.column]);
         }
         try terminal.control.resetForegroundAndBackgroundColor();
     }
@@ -193,6 +222,12 @@ const cursor = struct {
 
     fn getCurrentLine() *ArrayList(u8) {
         return &lines.items[position.row];
+    }
+
+    fn correctColumn() void {
+        const current_line_len = @intCast(u16, getCurrentLine().items.len);
+        if (position.column > current_line_len)
+            position.column = current_line_len;
     }
 };
 

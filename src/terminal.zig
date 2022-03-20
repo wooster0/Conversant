@@ -26,6 +26,7 @@ const writing = struct {
     }
 };
 pub const write = writing.write;
+pub const writeByte = writing.writer.writeByte;
 pub const writeByteNTimes = writing.writer.writeByteNTimes;
 pub const print = writing.writer.print;
 pub const flush = writing.flush;
