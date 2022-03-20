@@ -76,6 +76,7 @@ const Input = union(enum) {
 
     enter,
     tab,
+    backspace,
     esc,
 };
 
@@ -103,6 +104,7 @@ fn parseInput(buffer: []const u8) Input {
         },
         '\r' => .enter,
         '\t' => .tab,
+        0x7F => .backspace,
         else => .{ .char = buffer[0] },
     };
 }

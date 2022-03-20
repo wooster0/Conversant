@@ -98,6 +98,15 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
             try lines.insert(cursor.position.row, allocatedLineAfterNewline);
         },
         .tab => try cursor.insertSlice("    "),
+        .backspace => {
+            const current_line = cursor.getCurrentLine();
+
+            var char_index_to_remove: u16 = undefined;
+            if (!@subWithOverflow(u16, cursor.position.column, 1, &char_index_to_remove)) {
+                _ = current_line.orderedRemove(char_index_to_remove);
+                cursor.position.column -|= 1;
+            }
+        },
         .esc => return .Exit,
     }
     return null;
