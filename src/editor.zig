@@ -126,13 +126,51 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
             try lines.insert(cursor.position.row, allocatedLineAfterNewline);
         },
         .tab => try cursor.insertSlice("    "),
-        .backspace => {
-            const current_line = cursor.getCurrentLine();
+        .backspace => |modifier| {
+            switch (modifier) {
+                .none => {
+                    // Remove a single character
+                    if (cursor.getPreviousCharIndex()) |char_to_remove_index| {
+                        cursor.removeCurrentLineChar(char_to_remove_index);
+                    }
+                },
+                .ctrl => {
+                    // Remove a whole word
 
-            var char_index_to_remove: u16 = undefined;
-            if (!@subWithOverflow(u16, cursor.position.column, 1, &char_index_to_remove)) {
-                _ = current_line.orderedRemove(char_index_to_remove);
-                cursor.position.column -|= 1;
+                    // TODO: Currently all blocks of successive non-space characters are treated as one "word".
+                    //       This could be improved to treat e.g. "hello.world" as 2 words instead of 1.
+
+                    // Go backwards from this point and remove all characters
+                    // until we hit a space or BOL (beginning of line).
+                    //
+                    // We expect the amount of characters until that happens
+                    // to be small enough that a linear search is appropriate.
+                    var remove_spaces = true;
+                    while (true) {
+                        if (cursor.getPreviousCharIndex()) |char_to_remove_index| {
+                            const current_line = cursor.getCurrentLine();
+                            if (current_line.items[char_to_remove_index] == ' ') {
+                                if (remove_spaces) {
+                                    cursor.removeCurrentLineChar(char_to_remove_index);
+                                    const space_removed = cursor.removePreviousSuccessiveSpaces();
+                                    if (space_removed) {
+                                        break;
+                                    } else {
+                                        continue;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                remove_spaces = false;
+                            }
+
+                            cursor.removeCurrentLineChar(char_to_remove_index);
+                        } else {
+                            break;
+                        }
+                    }
+                },
             }
         },
         .esc => return .Exit,
@@ -222,6 +260,42 @@ const cursor = struct {
 
     fn getCurrentLine() *ArrayList(u8) {
         return &lines.items[position.row];
+    }
+
+    /// Returns the character before the cursor.
+    ///
+    /// If the cursor is at the start of the line, this returns `null`.
+    fn getPreviousCharIndex() ?u16 {
+        if (cursor.position.column == 0) {
+            // There is no character before this
+            return null;
+        } else {
+            return cursor.position.column - 1;
+        }
+    }
+
+    fn removeCurrentLineChar(index: u16) void {
+        const current_line = cursor.getCurrentLine();
+        _ = current_line.orderedRemove(index);
+        cursor.position.column -= 1;
+    }
+
+    /// Removes all consecutive spaces before the cursor
+    /// and returns whether or not a space was removed.
+    fn removePreviousSuccessiveSpaces() bool {
+        var space_removed = false;
+        const current_line = getCurrentLine();
+        while (true) {
+            if (cursor.getPreviousCharIndex()) |char_to_remove_index| {
+                if (current_line.items[char_to_remove_index] == ' ') {
+                    cursor.removeCurrentLineChar(char_to_remove_index);
+                    space_removed = true;
+                    continue;
+                }
+            }
+            break;
+        }
+        return space_removed;
     }
 
     fn correctColumn() void {

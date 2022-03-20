@@ -67,6 +67,12 @@ pub fn readInput() !Input {
     return parseInput(buffer[0..bytes_read]);
 }
 
+/// The key that was pressed in addition.
+const Modifier = enum {
+    ctrl,
+    none,
+};
+
 const Input = union(enum) {
     char: u8,
 
@@ -77,7 +83,7 @@ const Input = union(enum) {
 
     enter,
     tab,
-    backspace,
+    backspace: Modifier,
     esc,
 };
 
@@ -105,7 +111,8 @@ fn parseInput(buffer: []const u8) Input {
         },
         '\r' => .enter,
         '\t' => .tab,
-        0x7F => .backspace,
+        0x7F => .{ .backspace = .none },
+        0x17 => .{ .backspace = .ctrl },
         else => .{ .char = buffer[0] },
     };
 }
