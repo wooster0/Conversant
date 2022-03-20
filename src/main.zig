@@ -41,3 +41,17 @@ pub fn main() anyerror!void {
 
     try deinitTerminal();
 }
+
+/// Prints to a local file "debug-output" to debug with, ignoring any errors.
+///
+/// This is used as an alternative to printing to the terminal
+/// because that one is more or less occupied with the editor.
+pub fn debug(comptime format: []const u8, args: anytype) void {
+    if (@import("builtin").mode != .Debug)
+        @compileError("this function is only available in debug mode");
+
+    const file = std.fs.cwd().createFile("debug-output", .{ .truncate = false }) catch return;
+    defer file.close();
+    file.seekFromEnd(0) catch return;
+    file.writer().print(format, args) catch return;
+}

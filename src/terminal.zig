@@ -7,7 +7,6 @@ const std = @import("std");
 const io = std.io;
 const os = std.os;
 const fmt = std.fmt;
-const builtin = @import("builtin");
 
 const Position = @import("root").Position;
 const Size = @import("root").Size;
@@ -117,17 +116,6 @@ fn parseInput(buffer: []const u8) Input {
         0x17 => .{ .backspace = .ctrl },
         else => .{ .char = buffer[0] },
     };
-}
-
-pub fn debug(comptime format: []const u8, args: anytype) void {
-    if (builtin.mode != .Debug)
-        @compileError("this function is only available in debug mode");
-
-    // Position it in the top right
-    const output_length = fmt.count(format, args);
-    cursor.setPosition(.{ .row = 0, .column = @intCast(u16, size.width - output_length) }) catch {};
-
-    print(format, args) catch {};
 }
 
 const CSI = "\x1b[";
