@@ -62,7 +62,7 @@ pub fn open(path: [:0]const u8) !void {
 pub fn new_file() !void {
     const allocator = arena_allocator.allocator();
 
-    // Start with one, empty line.
+    // Start with one, empty line
     lines = try ArrayList(ArrayList(u8)).initCapacity(allocator, 1);
     lines.appendAssumeCapacity(ArrayList(u8).init(allocator));
 }
@@ -102,28 +102,43 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
                 cursor.correctColumn();
             }
         },
-        .left => {
-            if (cursor.position.column == 0) {
-                // Wrap back to the previous line's end if we're not at BOF (beginning of file)
-                if (cursor.position.row != 0) {
-                    cursor.position.row -= 1;
-                    cursor.position.column = @intCast(u16, cursor.getCurrentLine().items.len);
-                }
-            } else {
-                cursor.position.column -|= 1;
+        .left => |modifier| {
+            switch (modifier) {
+                .none => {
+                    if (cursor.position.column == 0) {
+                        // Wrap back to the previous line's end if we're not at BOF (beginning of file)
+                        if (cursor.position.row != 0) {
+                            cursor.position.row -= 1;
+                            cursor.position.column = @intCast(u16, cursor.getCurrentLine().items.len);
+                        }
+                    } else {
+                        cursor.position.column -|= 1;
+                    }
+                },
+                .ctrl => unreachable,
             }
         },
-        .right => {
-            if (cursor.position.column == cursor.getCurrentLine().items.len) {
-                // Wrap to the next line's start if we're not at EOF (end of file)
-                if (cursor.position.row != lines.items.len - 1) {
-                    cursor.position.row += 1;
-                    cursor.position.column = 0;
-                }
-            } else {
-                cursor.position.column += 1;
+        .right => |modifier| {
+            switch (modifier) {
+                .none => {
+                    if (cursor.position.column == cursor.getCurrentLine().items.len) {
+                        // Wrap to the next line's start if we're not at EOF (end of file)
+                        if (cursor.position.row != lines.items.len - 1) {
+                            cursor.position.row += 1;
+                            cursor.position.column = 0;
+                        }
+                    } else {
+                        cursor.position.column += 1;
+                    }
+                },
+                .ctrl => unreachable,
             }
         },
+
+        .home => cursor.position.column = 0,
+        .end => cursor.position.column = @intCast(u16, cursor.getCurrentLine().items.len),
+        .page_up => unreachable,
+        .page_down => unreachable,
 
         .enter => {
             //
@@ -151,6 +166,7 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
             try lines.insert(cursor.position.row, allocatedLineAfterNewline);
         },
         .tab => try cursor.insertSlice("    "),
+
         .backspace => |modifier| {
             switch (modifier) {
                 .none => {
@@ -166,10 +182,10 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
                     //       This could be improved to treat e.g. "hello.world" as 2 words instead of 1.
 
                     // Go backwards from this point and remove all characters
-                    // until we hit a space or BOL (beginning of line).
+                    // until we hit a space or BOL (beginning of line)
                     //
                     // We expect the amount of characters until that happens
-                    // to be small enough that a linear search is appropriate.
+                    // to be small enough that a linear search is appropriate
                     var remove_spaces = true;
                     while (true) {
                         if (cursor.getPreviousCharIndex()) |char_to_remove_index| {
