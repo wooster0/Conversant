@@ -1,7 +1,9 @@
 const std = @import("std");
+const process = std.process;
+const heap = std.heap;
 
 const terminal = @import("terminal.zig");
-const editor = @import("editor.zig");
+const Editor = @import("editor.zig").Editor;
 
 pub const Position = struct { row: u16, column: u16 };
 pub const Size = struct { width: u16, height: u16 };
@@ -27,16 +29,20 @@ fn deinitTerminal() !void {
 pub fn main() anyerror!void {
     try initTerminal();
 
-    var args = std.process.args();
+    var args = process.args();
 
     _ = args.skip(); // Skip the program name
 
+    var arena_allocator = heap.ArenaAllocator.init(heap.page_allocator);
+    const allocator = arena_allocator.allocator();
+
+    var editor: Editor = undefined;
     if (args.nextPosix()) |path| {
-        try editor.open(path);
+        editor = try Editor.open(allocator, path);
     } else {
-        try editor.new_file();
+        editor = try Editor.new_file(allocator);
     }
-    try editor.run();
+    try editor.run(allocator);
 
     try editor.deinit();
     try deinitTerminal();
