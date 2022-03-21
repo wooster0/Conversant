@@ -5,7 +5,7 @@ const assert = std.debug.assert;
 const stdin = io.getStdIn();
 
 /// The key that was pressed.
-const Key = union(enum) {
+pub const Key = union(enum) {
     char: u8,
 
     up,
@@ -34,7 +34,7 @@ const Modifier = enum {
 };
 
 const stdin_reader = stdin.reader();
-pub fn readInput() !Key {
+pub fn read() !Key {
     var buffer = [1]u8{undefined} ** 6;
     var bytes_read = try stdin_reader.read(&buffer);
     @import("root").debug("{s}", .{buffer[0..bytes_read]});

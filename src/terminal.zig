@@ -9,7 +9,7 @@ const os = std.os;
 const linux = os.linux;
 const fmt = std.fmt;
 
-usingnamespace @import("terminal/input.zig");
+pub const input = @import("terminal/input.zig");
 
 const Position = @import("root").Position;
 const Size = @import("root").Size;

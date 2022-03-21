@@ -94,9 +94,13 @@ pub fn run() !void {
 const Action = enum { Exit };
 
 fn handleEvents(allocator: mem.Allocator) !?Action {
-    const input = try terminal.readInput();
+    const input = try terminal.input.read();
 
-    switch (input) {
+    return handleKey(allocator, input);
+}
+
+fn handleKey(allocator: mem.Allocator, key: terminal.input.Key) !?Action {
+    switch (key) {
         .char => |char| try cursor.insert(char),
 
         .up => {
