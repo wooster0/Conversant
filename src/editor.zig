@@ -180,6 +180,7 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
                     // Remove a single character
                     if (cursor.getPreviousCharIndex()) |char_to_remove_index| {
                         cursor.removeCurrentLineChar(char_to_remove_index);
+                        cursor.position.column -= 1;
                     }
                 },
                 .ctrl => {
@@ -227,10 +228,8 @@ fn handleEvents(allocator: mem.Allocator) !?Action {
             switch (modifier) {
                 .none => {
                     // Remove a single character
-                    if (cursor.getCurrentCharIndex()) |char_to_remove_index| {
-                        const current_line = cursor.getCurrentLine();
-                        _ = current_line.orderedRemove(char_to_remove_index);
-                    }
+                    if (cursor.getCurrentCharIndex()) |char_to_remove_index|
+                        cursor.removeCurrentLineChar(char_to_remove_index);
                 },
                 .ctrl => {},
             }
