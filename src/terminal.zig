@@ -6,6 +6,7 @@
 const std = @import("std");
 const io = std.io;
 const os = std.os;
+const linux = os.linux;
 const fmt = std.fmt;
 
 usingnamespace @import("terminal/input.zig");
@@ -53,14 +54,21 @@ pub fn deinit() !void {
 
 /// Returns the size of the terminal.
 fn getSize() !Size {
-    var winsize: os.system.winsize = undefined;
-    switch (os.errno(os.system.ioctl(stdout.handle, os.system.T.IOCGWINSZ, @ptrToInt(&winsize)))) {
+    var winsize: linux.winsize = undefined;
+    switch (os.errno(linux.ioctl(stdout.handle, linux.T.IOCGWINSZ, @ptrToInt(&winsize)))) {
         .SUCCESS => return Size{ .width = winsize.ws_col, .height = winsize.ws_row },
         else => |err| return os.unexpectedErrno(err),
     }
 }
 
+/// Control Sequence Indicator.
 const CSI = "\x1b[";
+
+/// Operating System Command.
+const OSC = "\x1b]";
+
+/// Alert/beep/bell escape sequence.
+const alert = "\x07";
 
 pub const config = struct {
     var original_termios: os.termios = undefined;
@@ -88,11 +96,11 @@ pub const config = struct {
         try os.tcsetattr(stdout.handle, .FLUSH, termios);
     }
     fn makeTermiosRaw(termios: *os.termios) void {
-        termios.iflag &= ~(os.system.IGNBRK | os.system.BRKINT | os.system.PARMRK | os.system.ISTRIP | os.system.INLCR | os.system.IGNCR | os.system.ICRNL | os.system.IXON);
-        termios.oflag &= ~os.system.OPOST;
-        termios.lflag &= ~(os.system.ECHO | os.system.ECHONL | os.system.ICANON | os.system.ISIG | os.system.IEXTEN);
-        termios.cflag &= ~(os.system.CSIZE | os.system.PARENB);
-        termios.cflag |= os.system.CS8;
+        termios.iflag &= ~(linux.IGNBRK | linux.BRKINT | linux.PARMRK | linux.ISTRIP | linux.INLCR | linux.IGNCR | linux.ICRNL | linux.IXON);
+        termios.oflag &= ~linux.OPOST;
+        termios.lflag &= ~(linux.ECHO | linux.ECHONL | linux.ICANON | linux.ISIG | linux.IEXTEN);
+        termios.cflag &= ~(linux.CSIZE | linux.PARENB);
+        termios.cflag |= linux.CS8;
     }
 
     pub fn showCursor() !void {
@@ -125,14 +133,38 @@ pub const cursor = struct {
 pub const control = struct {
     /// Clears the entire screen.
     pub fn clear() !void {
-        try write("\x1b[2J");
+        try write(CSI ++ "2J");
     }
 
-    pub fn setBlackOnWhiteBackgroundColor() !void {
+    pub fn setBlackOnWhiteBackgroundCellColor() !void {
         try write(CSI ++ "30;107m");
     }
 
-    pub fn resetForegroundAndBackgroundColor() !void {
+    pub fn resetForegroundAndBackgroundCellColor() !void {
         try write(CSI ++ "39;49m");
+    }
+
+    /// Sets the background color of the whole screen.
+    ///
+    /// `hex_color` is a hexadecimal color that does not start with a number sign.
+    pub fn setScreenBackgroundColor(hex_color: []const u8) !void {
+        try print(OSC ++ "11;#{s}" ++ alert, .{hex_color});
+    }
+    pub fn resetScreenBackgroundColor() !void {
+        try write(OSC ++ "111" ++ alert);
+    }
+
+    /// Sets the foreground color of the whole screen.
+    ///
+    /// `hex_color` is a hexadecimal color that does not start with a number sign.
+    pub fn setScreenForegroundColor(hex_color: []const u8) !void {
+        try print(OSC ++ "10;#{s}" ++ alert, .{hex_color});
+    }
+    pub fn resetScreenForegroundColor() !void {
+        try write(OSC ++ "110" ++ alert);
+    }
+
+    pub fn setTitle(title: []const u8) !void {
+        try print(OSC ++ "0;{s}" ++ alert, .{title});
     }
 };

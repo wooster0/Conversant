@@ -12,6 +12,7 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("con", "src/main.zig");
+    exe.linkLibC(); // Required for `localtime`
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
@@ -27,7 +28,10 @@ pub fn build(b: *std.build.Builder) void {
 
     // TODO: iterate the whole source tree to include all files that can possibly contain tests
     const exe_tests = b.addTest("src/main.zig");
-    _ = b.addTest("src/editor.zig");
+    const tests1 = b.addTest("src/editor.zig");
+    const tests2 = b.addTest("src/editor/background.zig");
+    exe_tests.step.dependOn(&tests1.step);
+    exe_tests.step.dependOn(&tests2.step);
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
 

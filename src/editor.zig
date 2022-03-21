@@ -14,6 +14,8 @@ const math = std.math;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
 
+const background = @import("editor/background.zig");
+
 const terminal = @import("terminal.zig");
 const Position = @import("root").Position;
 
@@ -39,6 +41,8 @@ var arena_allocator = heap.ArenaAllocator.init(heap.page_allocator);
 var lines: ArrayList(ArrayList(u8)) = undefined;
 
 pub fn open(path: [:0]const u8) !void {
+    try background.setTimelyBackground();
+
     const allocator = arena_allocator.allocator();
 
     const file = try fs.cwd().openFileZ(path, .{});
@@ -60,6 +64,8 @@ pub fn open(path: [:0]const u8) !void {
 }
 
 pub fn new_file() !void {
+    try background.setTimelyBackground();
+
     const allocator = arena_allocator.allocator();
 
     // Start with one, empty line
@@ -67,7 +73,8 @@ pub fn new_file() !void {
     lines.appendAssumeCapacity(ArrayList(u8).init(allocator));
 }
 
-pub fn deinit() void {
+pub fn deinit() !void {
+    try background.resetTimelyBackground();
     arena_allocator.deinit();
 }
 
@@ -289,7 +296,7 @@ const cursor = struct {
 
     fn draw(offset: Position) !void {
         try setPositionWithOffset(offset);
-        try terminal.control.setBlackOnWhiteBackgroundColor();
+        try terminal.control.setBlackOnWhiteBackgroundCellColor();
 
         // Write the character that's below the cursor
         const current_line = getCurrentLine().items;
@@ -299,7 +306,7 @@ const cursor = struct {
         } else {
             try terminal.writeByte(current_line[position.column]);
         }
-        try terminal.control.resetForegroundAndBackgroundColor();
+        try terminal.control.resetForegroundAndBackgroundCellColor();
     }
 
     fn insert(char: u8) !void {

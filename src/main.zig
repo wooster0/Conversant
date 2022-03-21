@@ -36,9 +36,9 @@ pub fn main() anyerror!void {
     } else {
         try editor.new_file();
     }
-    defer editor.deinit();
     try editor.run();
 
+    try editor.deinit();
     try deinitTerminal();
 }
 
