@@ -12,6 +12,26 @@ pub const Cursor = struct {
     const Self = @This();
 
     position: Position = .{ .row = 0, .column = 0 },
+    /// This is the column that the cursor will try to be on, if possible.
+    /// You could also say this column wants to be the one that the cursor is on.
+    ///
+    /// Here is an example showcasing correct behavior of cursor movement,
+    /// where `|` is the cursor:
+    ///
+    /// 1. Initial state:
+    ///    ```
+    ///    hello| world
+    ///
+    ///    ```
+    /// 2. Pressing down key:
+    ///    ```
+    ///    hello world
+    ///    |
+    ///    ```
+    /// 3. Pressing up key: back to 1.
+    ///
+    /// This effect is achieved using the ambitious column.
+    ambitiousColumn: u16 = 0,
 
     /// An abstraction over the actual `terminal.cursor.setPosition` with an offset.
     fn setPositionWithOffset(self: Self, offset: Position) !void {
@@ -26,12 +46,12 @@ pub const Cursor = struct {
         try terminal.control.setBlackOnWhiteBackgroundCellColor();
 
         // Write the character that's below the cursor
-        const current_line = self.getCurrentLine(lines).items;
-        if (self.position.column >= current_line.len) {
+        const current_line_chars = self.getCurrentLine(lines).items;
+        if (self.position.column >= current_line_chars.len) {
             // If the index would be out of bounds, still draw the cursor
             try terminal.writeByte(' ');
         } else {
-            try terminal.writeByte(current_line[self.position.column]);
+            try terminal.writeByte(current_line_chars[self.position.column]);
         }
         try terminal.control.resetForegroundAndBackgroundCellColor();
     }
@@ -40,12 +60,14 @@ pub const Cursor = struct {
         const current_line = self.getCurrentLine(lines);
         try current_line.insert(self.position.column, char);
         self.position.column += 1;
+        self.setAmbitiousColumn();
     }
 
     fn insertSlice(self: *Self, lines: Lines, slice: []const u8) !void {
         const current_line = self.getCurrentLine(lines);
         try current_line.insertSlice(self.position.column, slice);
         self.position.column += @intCast(u16, slice.len);
+        self.setAmbitiousColumn();
     }
 
     fn getCurrentLine(self: Self, lines: Lines) *ArrayList(u8) {
@@ -68,7 +90,8 @@ pub const Cursor = struct {
     ///
     /// If the cursor is at the EOL, this returns `null`.
     fn getCurrentCharIndex(self: Self, lines: Lines) ?u16 {
-        if (self.position.column == self.getCurrentLine(lines).items.len) {
+        const current_line_chars = self.getCurrentLine(lines).items;
+        if (self.position.column == current_line_chars.len) {
             // There is no character before this
             return null;
         } else {
@@ -85,10 +108,10 @@ pub const Cursor = struct {
     /// and returns whether or not a space was removed.
     fn removePreviousSuccessiveSpaces(self: *Self, lines: Lines) bool {
         var space_removed = false;
-        const current_line = self.getCurrentLine(lines);
+        const current_line_chars = self.getCurrentLine(lines).items;
         while (true) {
             if (self.getPreviousCharIndex()) |char_to_remove_index| {
-                if (current_line.items[char_to_remove_index] == ' ') {
+                if (current_line_chars[char_to_remove_index] == ' ') {
                     self.removeCurrentLineChar(lines, char_to_remove_index);
                     self.position.column -= 1;
                     space_removed = true;
@@ -100,10 +123,19 @@ pub const Cursor = struct {
         return space_removed;
     }
 
-    fn correctColumn(self: *Self, lines: Lines) void {
+    fn tryToReachAmbitiousColumn(self: *Self, lines: Lines) void {
         const current_line_len = @intCast(u16, self.getCurrentLine(lines).items.len);
-        if (self.position.column > current_line_len)
+        if (current_line_len < self.ambitiousColumn) {
+            // If the ambitious column is out of reach,
+            // at least go to this line's end
             self.position.column = current_line_len;
+        } else {
+            self.position.column = self.ambitiousColumn;
+        }
+    }
+
+    fn setAmbitiousColumn(self: *Self) void {
+        self.ambitiousColumn = self.position.column;
     }
 
     pub fn handleKey(self: *Self, allocator: mem.Allocator, lines: *Lines, key: terminal.input.Key) !?editor.Action {
@@ -111,13 +143,23 @@ pub const Cursor = struct {
             .char => |char| try self.insert(lines.*, char),
 
             .up => {
-                self.position.row -|= 1;
-                self.correctColumn(lines.*);
+                if (self.position.row == 0) {
+                    // We are at BOF
+                    self.position.column = 0;
+                } else {
+                    self.position.row -= 1;
+                    self.tryToReachAmbitiousColumn(lines.*);
+                }
             },
             .down => {
-                if (self.position.row != lines.items.len - 1) {
+                if (self.position.row == lines.items.len - 1) {
+                    // We are at EOF
+                    const last_line_index = @intCast(u16, lines.items.len - 1);
+                    const last_line = lines.items[last_line_index];
+                    self.position.column = @intCast(u16, last_line.items.len);
+                } else {
                     self.position.row += 1;
-                    self.correctColumn(lines.*);
+                    self.tryToReachAmbitiousColumn(lines.*);
                 }
             },
             .left => |modifier| {
@@ -135,6 +177,7 @@ pub const Cursor = struct {
                     },
                     .ctrl => unreachable,
                 }
+                self.setAmbitiousColumn();
             },
             .right => |modifier| {
                 switch (modifier) {
@@ -151,6 +194,7 @@ pub const Cursor = struct {
                     },
                     .ctrl => unreachable,
                 }
+                self.setAmbitiousColumn();
             },
 
             .home => self.position.column = 0,
@@ -224,8 +268,8 @@ pub const Cursor = struct {
                         var remove_spaces = true;
                         while (true) {
                             if (self.getPreviousCharIndex()) |char_to_remove_index| {
-                                const current_line = self.getCurrentLine(lines.*);
-                                if (current_line.items[char_to_remove_index] == ' ') {
+                                const current_line_chars = self.getCurrentLine(lines.*).items;
+                                if (current_line_chars[char_to_remove_index] == ' ') {
                                     if (remove_spaces) {
                                         self.removeCurrentLineChar(lines.*, char_to_remove_index);
                                         self.position.column -= 1;
@@ -250,6 +294,7 @@ pub const Cursor = struct {
                         }
                     },
                 }
+                self.setAmbitiousColumn();
             },
             .delete => |modifier| {
                 switch (modifier) {
