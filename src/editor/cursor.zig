@@ -173,7 +173,7 @@ pub const Cursor = struct {
                             // Wrap back to the previous line's end if we're not at BOF
                             if (self.position.row != 0) {
                                 self.position.row -= 1;
-                                self.goToEndOfLine(self.getCurrentLine(lines.*));
+                                self.goToEndOfLine(self.getCurrentLine(lines.*).*);
                             }
                         } else {
                             self.position.column -|= 1;
@@ -210,7 +210,7 @@ pub const Cursor = struct {
             },
             .end => |modifier| {
                 switch (modifier) {
-                    .none => self.goToEndOfLine(self.getCurrentLine(lines.*)),
+                    .none => self.goToEndOfLine(self.getCurrentLine(lines.*).*),
                     .ctrl => {
                         const last_line_index = @intCast(u16, lines.items.len - 1);
                         const last_line = lines.items[last_line_index];
@@ -271,7 +271,7 @@ pub const Cursor = struct {
                                     try current_line.ensureUnusedCapacity(removed_line.items.len);
                                     current_line.appendSliceAssumeCapacity(removed_line.items);
 
-                                    self.goToEndOfLine(current_line);
+                                    self.goToEndOfLine(current_line.*);
                                 }
                             }
                         }
