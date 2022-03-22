@@ -52,26 +52,24 @@ pub const Cursor = struct {
         return &lines.items[self.position.row];
     }
 
-    /// Returns the character before the cursor.
+    /// Returns the character before the cursor, on the current line.
     ///
     /// If the cursor is at BOL, this returns `null`.
     fn getPreviousCharIndex(self: Self) ?u16 {
         if (self.position.column == 0) {
             // There is no character before this
-            // TODO: get the last character of the previous line
             return null;
         } else {
             return self.position.column - 1;
         }
     }
 
-    /// Returns the character on the cursor.
+    /// Returns the character on the cursor, on the current line.
     ///
     /// If the cursor is at the EOL, this returns `null`.
     fn getCurrentCharIndex(self: Self, lines: Lines) ?u16 {
         if (self.position.column == self.getCurrentLine(lines).items.len) {
             // There is no character before this
-            // TODO: get the first character of the next line
             return null;
         } else {
             return self.position.column;
@@ -126,7 +124,7 @@ pub const Cursor = struct {
                 switch (modifier) {
                     .none => {
                         if (self.position.column == 0) {
-                            // Wrap back to the previous line's end if we're not at BOF (beginning of file)
+                            // Wrap back to the previous line's end if we're not at BOF
                             if (self.position.row != 0) {
                                 self.position.row -= 1;
                                 self.position.column = @intCast(u16, self.getCurrentLine(lines.*).items.len);
@@ -142,7 +140,7 @@ pub const Cursor = struct {
                 switch (modifier) {
                     .none => {
                         if (self.position.column == self.getCurrentLine(lines.*).items.len) {
-                            // Wrap to the next line's start if we're not at EOF (end of file)
+                            // Wrap to the next line's start if we're not at EOF
                             if (self.position.row != lines.items.len - 1) {
                                 self.position.row += 1;
                                 self.position.column = 0;
@@ -194,6 +192,22 @@ pub const Cursor = struct {
                         if (self.getPreviousCharIndex()) |char_to_remove_index| {
                             self.removeCurrentLineChar(lines.*, char_to_remove_index);
                             self.position.column -= 1;
+                        } else {
+                            // We are at the beginning of the line and
+                            // there is no character on the left of the cursor to remove
+                            if (self.position.row != 0) { // BOF?
+                                // Remove the leading newline
+                                self.position.row -= 1;
+                                const removed_line = lines.orderedRemove(self.position.row);
+                                if (removed_line.items.len != 0) {
+                                    const current_line = self.getCurrentLine(lines.*);
+                                    // Append the items to the current line
+                                    try current_line.ensureUnusedCapacity(removed_line.items.len);
+                                    current_line.appendSliceAssumeCapacity(removed_line.items);
+
+                                    self.position.column = @intCast(u16, current_line.items.len);
+                                }
+                            }
                         }
                     },
                     .ctrl => {
@@ -203,7 +217,7 @@ pub const Cursor = struct {
                         //       This could be improved to treat e.g. "hello.world" as 2 words instead of 1.
 
                         // Go backwards from this point and remove all characters
-                        // until we hit a space or BOL (beginning of line)
+                        // until we hit a space or BOL
                         //
                         // We expect the amount of characters until that happens
                         // to be small enough that a linear search is appropriate
@@ -240,9 +254,23 @@ pub const Cursor = struct {
             .delete => |modifier| {
                 switch (modifier) {
                     .none => {
-                        // Remove a single character
-                        if (self.getCurrentCharIndex(lines.*)) |char_to_remove_index|
+                        // Remove the character the cursor is on
+                        if (self.getCurrentCharIndex(lines.*)) |char_to_remove_index| {
                             self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                        } else {
+                            // We are at the end of the line and
+                            // there is no character on the cursor to remove
+                            if (self.position.row != lines.items.len - 1) { // EOF?
+                                // Remove the trailing newline
+                                const removed_line = lines.orderedRemove(self.position.row + 1);
+                                if (removed_line.items.len != 0) {
+                                    const current_line = self.getCurrentLine(lines.*);
+                                    // Append the items to the current line
+                                    try current_line.ensureUnusedCapacity(removed_line.items.len);
+                                    current_line.appendSliceAssumeCapacity(removed_line.items);
+                                }
+                            }
+                        }
                     },
                     .ctrl => {},
                 }
