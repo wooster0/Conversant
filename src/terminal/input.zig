@@ -13,8 +13,8 @@ pub const Key = union(enum) {
     left: Modifier,
     right: Modifier,
 
-    home, // TODO: implement the modifiers
-    end, // TODO: implement the modifiers
+    home: Modifier,
+    end: Modifier,
     page_up, // TODO: implement the modifiers
     page_down, // TODO: implement the modifiers
 
@@ -53,18 +53,24 @@ fn parseInput(buffer: []const u8) Key {
                         'B' => return .down,
                         'C' => return .{ .right = .none },
                         'D' => return .{ .left = .none },
-                        'F' => return .end,
-                        'H' => return .home,
+                        'F' => return .{ .end = .none },
+                        'H' => return .{ .home = .none },
                         '1' => {
                             assert(buffer[3] == ';');
                             switch (buffer[4]) {
                                 '5' => {
                                     switch (buffer[5]) {
+                                        'C' => {
+                                            return .{ .right = .ctrl };
+                                        },
                                         'D' => {
                                             return .{ .left = .ctrl };
                                         },
-                                        'C' => {
-                                            return .{ .right = .ctrl };
+                                        'F' => {
+                                            return .{ .end = .ctrl };
+                                        },
+                                        'H' => {
+                                            return .{ .home = .ctrl };
                                         },
                                         else => unreachable,
                                     }

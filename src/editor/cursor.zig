@@ -201,8 +201,26 @@ pub const Cursor = struct {
                 self.setAmbitiousColumn();
             },
 
-            .home => self.position.column = 0,
-            .end => self.position.column = @intCast(u16, self.getCurrentLine(lines.*).items.len),
+            .home => |modifier| {
+                switch (modifier) {
+                    .none => self.position.column = 0,
+                    .ctrl => self.position = .{ .row = 0, .column = 0 },
+                }
+                self.setAmbitiousColumn();
+            },
+            .end => |modifier| {
+                switch (modifier) {
+                    .none => self.goToEndOfLine(self.getCurrentLine(lines.*)),
+                    .ctrl => {
+                        const last_line_index = @intCast(u16, lines.items.len - 1);
+                        const last_line = lines.items[last_line_index];
+
+                        self.position.row = last_line_index;
+                        self.goToEndOfLine(last_line);
+                    },
+                }
+                self.setAmbitiousColumn();
+            },
             .page_up => unreachable,
             .page_down => unreachable,
 
