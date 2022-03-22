@@ -92,20 +92,16 @@ fn brightnessToHexColor(hex_color: *[6]u8, brightness: f16) void {
 //       At some point change the event loop to a polling one and then re-set the background
 //       every once in a while.
 pub fn setTimelyBackground() !void {
-    var current_local_time = getCurrentLocalTime();
+    const current_local_time = getCurrentLocalTime();
     const normalized_time = normalizeTime(current_local_time);
 
     var hex_color = [1]u8{undefined} ** 6;
 
-    const background_brightness = normalized_time / 2; // Dampen the brightness a little bit
+    const background_brightness = normalized_time / 2.5; // Dampen it a bit
     brightnessToHexColor(&hex_color, background_brightness);
     try terminal.control.setScreenBackgroundColor(&hex_color);
 
-    var foreground_brightness: f16 = undefined;
-    if (normalized_time < 0.5)
-        foreground_brightness = 1
-    else
-        foreground_brightness = 0;
+    const foreground_brightness = 1 - background_brightness / 5; // Dampen this a bit more
     brightnessToHexColor(&hex_color, foreground_brightness);
     try terminal.control.setScreenForegroundColor(&hex_color);
 }
