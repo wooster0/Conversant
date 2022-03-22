@@ -138,6 +138,10 @@ pub const Cursor = struct {
         self.ambitiousColumn = self.position.column;
     }
 
+    fn goToEndOfLine(self: *Self,line:ArrayList(u8)) void {
+        self.position.column = @intCast(u16,line.items.len);
+    }
+
     pub fn handleKey(self: *Self, allocator: mem.Allocator, lines: *Lines, key: terminal.input.Key) !?editor.Action {
         switch (key) {
             .char => |char| try self.insert(lines.*, char),
@@ -156,7 +160,7 @@ pub const Cursor = struct {
                     // We are at EOF
                     const last_line_index = @intCast(u16, lines.items.len - 1);
                     const last_line = lines.items[last_line_index];
-                    self.position.column = @intCast(u16, last_line.items.len);
+                    self.goToEndOfLine(last_line);
                 } else {
                     self.position.row += 1;
                     self.tryToReachAmbitiousColumn(lines.*);
@@ -169,7 +173,7 @@ pub const Cursor = struct {
                             // Wrap back to the previous line's end if we're not at BOF
                             if (self.position.row != 0) {
                                 self.position.row -= 1;
-                                self.position.column = @intCast(u16, self.getCurrentLine(lines.*).items.len);
+                                self.goToEndOfLine(self.getCurrentLine(lines.*));
                             }
                         } else {
                             self.position.column -|= 1;
@@ -249,7 +253,7 @@ pub const Cursor = struct {
                                     try current_line.ensureUnusedCapacity(removed_line.items.len);
                                     current_line.appendSliceAssumeCapacity(removed_line.items);
 
-                                    self.position.column = @intCast(u16, current_line.items.len);
+                                    self.goToEndOfLine(current_line);
                                 }
                             }
                         }
