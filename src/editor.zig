@@ -18,7 +18,7 @@ const Cursor = @import("editor/cursor.zig").Cursor;
 const background = @import("editor/background.zig");
 
 const terminal = @import("terminal.zig");
-const Position = @import("root").Position;
+const Position = @import("main.zig").Position;
 
 pub const Action = enum { exit };
 
@@ -105,7 +105,7 @@ pub const Editor = struct {
         try terminal.control.clear();
         try terminal.cursor.reset();
 
-        const padding = getDigitCount(self.lines.items.len);
+        const padding = std.fmt.count("{}", .{self.lines.items.len});
         const line_number_count = @minimum(terminal.size.height - 1, self.lines.items.len);
 
         var row: usize = 0;
@@ -135,22 +135,139 @@ pub const Editor = struct {
     }
 };
 
-/// Returns the amount of digits in this number.
-fn getDigitCount(number: anytype) @TypeOf(number) {
-    if (number == 0) {
-        return 1;
-    } else {
-        return math.log10(number) + 1;
+const testing = std.testing;
+
+fn getEditor(content: []const u8) !Editor {
+    const allocator = testing.allocator_instance.allocator();
+
+    var lines = ArrayList(ArrayList(u8)).init(allocator);
+    var line_iterator = mem.split(u8, content, "\n");
+    while (line_iterator.next()) |line| {
+        var allocatedLine = try ArrayList(u8).initCapacity(allocator, line.len);
+        allocatedLine.appendSliceAssumeCapacity(line);
+
+        try lines.append(allocatedLine);
+    }
+
+    return Editor{ .lines = lines };
+}
+
+const expect = testing.expect;
+
+fn expectEditor(editor: Editor, expected: []const u8) !void {
+    var index: usize = 0;
+    var line_iterator = mem.split(u8, expected, "\n");
+    while (line_iterator.next()) |line| : (index += 1) {
+        const expected_line = line;
+        const actual_line = editor.lines.items[index].items;
+        try expect(mem.eql(u8, expected_line, actual_line));
     }
 }
 
-const testing = std.testing;
+fn press(editor: *Editor, key: terminal.input.Key) !void {
+    const allocator = testing.allocator_instance.allocator();
+
+    try expect((try editor.cursor.handleKey(allocator, &editor.lines, key)) == null);
+}
+
 const expectEqual = testing.expectEqual;
 
-test "getDigitCount" {
-    try expectEqual(1, getDigitCount(0));
-    try expectEqual(1, getDigitCount(5));
-    try expectEqual(3, getDigitCount(100));
-    try expectEqual(5, getDigitCount(12345));
-    try expectEqual(9, getDigitCount(123456789));
+test "insertion" {
+    var editor = try getEditor(
+        \\hello world
+    );
+
+    try press(&editor, .{ .char = 'A' });
+    try press(&editor, .{ .char = 'B' });
+    try press(&editor, .{ .char = 'C' });
+    try expectEqual(Position{ .row = 0, .column = 3 }, editor.cursor.position);
+    try expectEditor(editor,
+        \\ABChello world
+    );
+
+    try press(&editor, .{ .right = .none });
+    try press(&editor, .{ .right = .none });
+    try press(&editor, .{ .right = .none });
+    try press(&editor, .{ .char = 'D' });
+    try press(&editor, .{ .char = 'E' });
+    try press(&editor, .{ .char = 'F' });
+    try expectEqual(Position{ .row = 0, .column = 9 }, editor.cursor.position);
+    try expectEditor(editor,
+        \\ABChelDEFlo world
+    );
+
+    try press(&editor, .{ .end = .none });
+    try press(&editor, .{ .char = '1' });
+    try expectEqual(Position{ .row = 0, .column = 18 }, editor.cursor.position);
+    try expectEditor(editor,
+        \\ABChelDEFlo world1
+    );
+
+    try editor.deinit();
+}
+
+test "cursor movement" {
+    var editor = try getEditor(
+        \\
+        \\hello
+        \\
+        \\world
+    );
+
+    try press(&editor, .down);
+    try expectEqual(Position{ .row = 1, .column = 0 }, editor.cursor.position);
+
+    try press(&editor, .{ .right = .none });
+    try expectEqual(Position{ .row = 1, .column = 1 }, editor.cursor.position);
+
+    try press(&editor, .{ .end = .none });
+    try expectEqual(Position{ .row = 1, .column = 5 }, editor.cursor.position);
+
+    try press(&editor, .down);
+    try expectEqual(Position{ .row = 2, .column = 0 }, editor.cursor.position);
+
+    try press(&editor, .down);
+    try expectEqual(Position{ .row = 3, .column = 5 }, editor.cursor.position);
+
+    try press(&editor, .{ .home = .ctrl });
+    try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
+
+    try press(&editor, .{ .end = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 5 }, editor.cursor.position);
+
+    try editor.deinit();
+}
+
+test "removal" {
+    var editor = try getEditor(
+        \\
+        \\hello world
+        \\
+    );
+
+    try press(&editor, .{ .backspace = .none });
+    try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
+
+    try press(&editor, .{ .delete = .none });
+    try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
+
+    try press(&editor, .{ .delete = .none });
+    try press(&editor, .{ .delete = .none });
+    try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
+    try expectEditor(editor,
+        \\llo world
+        \\
+    );
+
+    try press(&editor, .{ .end = .ctrl });
+    try press(&editor, .{ .backspace = .none });
+    try expectEqual(Position{ .row = 0, .column = 9 }, editor.cursor.position);
+    try press(&editor, .{ .backspace = .none });
+    try press(&editor, .{ .backspace = .none });
+    try expectEqual(Position{ .row = 0, .column = 7 }, editor.cursor.position);
+    try expectEditor(editor,
+        \\llo wor
+    );
+
+    try editor.deinit();
 }

@@ -3,7 +3,7 @@ const mem = std.mem;
 const ArrayList = std.ArrayList;
 
 const terminal = @import("../terminal.zig");
-const Position = @import("root").Position;
+const Position = @import("../main.zig").Position;
 const editor = @import("../editor.zig");
 // In here the representation doesn't matter as much so we can use a type alias.
 const Lines = ArrayList(ArrayList(u8));
@@ -273,6 +273,7 @@ pub const Cursor = struct {
 
                                     self.goToEndOfLine(current_line.*);
                                 }
+                                removed_line.deinit();
                             }
                         }
                     },
@@ -336,6 +337,7 @@ pub const Cursor = struct {
                                     try current_line.ensureUnusedCapacity(removed_line.items.len);
                                     current_line.appendSliceAssumeCapacity(removed_line.items);
                                 }
+                                removed_line.deinit();
                             }
                         }
                     },

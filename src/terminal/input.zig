@@ -37,7 +37,7 @@ const stdin_reader = stdin.reader();
 pub fn read() !Key {
     var buffer = [1]u8{undefined} ** 6;
     var bytes_read = try stdin_reader.read(&buffer);
-    @import("root").debug("{s}", .{buffer[0..bytes_read]});
+    @import("../main.zig").debug("{s}", .{buffer[0..bytes_read]});
     return parseInput(buffer[0..bytes_read]);
 }
 

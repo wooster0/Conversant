@@ -11,8 +11,8 @@ const fmt = std.fmt;
 
 pub const input = @import("terminal/input.zig");
 
-const Position = @import("root").Position;
-const Size = @import("root").Size;
+const Position = @import("main.zig").Position;
+const Size = @import("main.zig").Size;
 
 const stdout = io.getStdOut();
 
