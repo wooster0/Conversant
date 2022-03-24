@@ -13,6 +13,8 @@ pub fn build(b: *std.build.Builder) void {
 
     const exe = b.addExecutable("con", "src/main.zig");
     exe.linkLibC(); // Required for `localtime`
+    exe.single_threaded = true;
+    exe.strip = @import("builtin").mode != .Debug;
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
