@@ -138,8 +138,8 @@ pub const Cursor = struct {
         self.ambitiousColumn = self.position.column;
     }
 
-    fn goToEndOfLine(self: *Self,line:ArrayList(u8)) void {
-        self.position.column = @intCast(u16,line.items.len);
+    fn goToEndOfLine(self: *Self, line: ArrayList(u8)) void {
+        self.position.column = @intCast(u16, line.items.len);
     }
 
     pub fn handleKey(self: *Self, allocator: mem.Allocator, lines: *Lines, key: terminal.input.Key) !?editor.Action {
@@ -343,7 +343,7 @@ pub const Cursor = struct {
                 }
             },
 
-            .esc => return .Exit,
+            .esc => return .exit,
         }
         return null;
     }

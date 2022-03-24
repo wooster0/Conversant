@@ -20,7 +20,7 @@ const background = @import("editor/background.zig");
 const terminal = @import("terminal.zig");
 const Position = @import("root").Position;
 
-pub const Action = enum { Exit };
+pub const Action = enum { exit };
 
 pub const Editor = struct {
     const Self = @This();
@@ -44,7 +44,17 @@ pub const Editor = struct {
     lines: ArrayList(ArrayList(u8)),
     cursor: Cursor = .{},
 
-    pub fn open(allocator: mem.Allocator, path: [:0]const u8) !Self {
+    pub fn new(allocator: mem.Allocator) !Self {
+        try background.setTimelyBackground();
+
+        // Start with one, empty line
+        var lines = try ArrayList(ArrayList(u8)).initCapacity(allocator, 1);
+        lines.appendAssumeCapacity(ArrayList(u8).init(allocator));
+
+        return Self{ .lines = lines };
+    }
+
+    pub fn openFile(allocator: mem.Allocator, path: [:0]const u8) !Self {
         try background.setTimelyBackground();
 
         const file = try fs.cwd().openFileZ(path, .{});
@@ -67,36 +77,28 @@ pub const Editor = struct {
         return Self{ .lines = lines };
     }
 
-    pub fn new_file(allocator: mem.Allocator) !Self {
-        try background.setTimelyBackground();
-
-        // Start with one, empty line
-        var lines = try ArrayList(ArrayList(u8)).initCapacity(allocator, 1);
-        lines.appendAssumeCapacity(ArrayList(u8).init(allocator));
-
-        return Self{ .lines = lines };
-    }
-
     pub fn deinit(self: *Self) !void {
         try background.resetTimelyBackground();
+        for (self.lines.items) |line|
+            line.deinit();
         self.lines.deinit();
     }
 
     pub fn run(self: *Self, allocator: mem.Allocator) !void {
         while (true) {
             try self.draw();
-            if (try self.handleEvents(allocator, &self.lines)) |action| {
+            if (try self.handleEvents(allocator)) |action| {
                 switch (action) {
-                    .Exit => break,
+                    .exit => break,
                 }
             }
         }
     }
 
-    fn handleEvents(self: *Self, allocator: mem.Allocator, lines: *ArrayList(ArrayList(u8))) !?Action {
+    fn handleEvents(self: *Self, allocator: mem.Allocator) !?Action {
         const input = try terminal.input.read();
 
-        return self.cursor.handleKey(allocator, lines, input);
+        return self.cursor.handleKey(allocator, &self.lines, input);
     }
 
     fn draw(self: Self) !void {

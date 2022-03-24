@@ -38,9 +38,9 @@ pub fn main() anyerror!void {
 
     var editor: Editor = undefined;
     if (args.nextPosix()) |path| {
-        editor = try Editor.open(allocator, path);
+        editor = try Editor.openFile(allocator, path);
     } else {
-        editor = try Editor.new_file(allocator);
+        editor = try Editor.new(allocator);
     }
     try editor.run(allocator);
 
