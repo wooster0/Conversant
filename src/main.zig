@@ -5,6 +5,7 @@ const heap = std.heap;
 const terminal = @import("terminal.zig");
 const Editor = @import("editor.zig").Editor;
 
+// From what I've seen, 16 bit generally serves as the maximum cell range in many if not most terminals
 pub const Position = struct { row: u16, column: u16 };
 pub const Size = struct { width: u16, height: u16 };
 
@@ -48,10 +49,10 @@ pub fn main() anyerror!void {
     try deinitTerminal();
 }
 
-/// Prints to a local file "debug-output" to debug with, ignoring any errors.
+/// Prints to a local file "debug-output" for debugging, ignoring any errors.
 ///
 /// This is used as an alternative to printing to the terminal
-/// because that one is more or less occupied with the editor.
+/// because it's more or less occupied with the editor.
 pub fn debug(comptime format: []const u8, args: anytype) void {
     if (@import("builtin").mode != .Debug)
         @compileError("this function is only available in debug mode");

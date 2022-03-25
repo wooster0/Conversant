@@ -74,7 +74,7 @@ pub const Cursor = struct {
         return &lines.items[self.position.row];
     }
 
-    /// Returns the character before the cursor, on the current line.
+    /// Returns the index of character before the cursor, on the current line.
     ///
     /// If the cursor is at BOL, this returns `null`.
     fn getPreviousCharIndex(self: Self) ?u16 {
@@ -86,7 +86,7 @@ pub const Cursor = struct {
         }
     }
 
-    /// Returns the character on the cursor, on the current line.
+    /// Returns the index of the character on the cursor, on the current line.
     ///
     /// If the cursor is at the EOL, this returns `null`.
     fn getCurrentCharIndex(self: Self, lines: Lines) ?u16 {
@@ -109,16 +109,15 @@ pub const Cursor = struct {
     fn removePreviousSuccessiveSpaces(self: *Self, lines: Lines) bool {
         var space_removed = false;
         const current_line_chars = self.getCurrentLine(lines).items;
-        while (true) {
-            if (self.getPreviousCharIndex()) |char_to_remove_index| {
-                if (current_line_chars[char_to_remove_index] == ' ') {
-                    self.removeCurrentLineChar(lines, char_to_remove_index);
-                    self.position.column -= 1;
-                    space_removed = true;
-                    continue;
-                }
+        while (self.getPreviousCharIndex()) |char_to_remove_index| {
+            if (current_line_chars[char_to_remove_index] == ' ') {
+                self.removeCurrentLineChar(lines, char_to_remove_index);
+                self.position.column -= 1;
+                space_removed = true;
+                continue;
+            } else {
+                break;
             }
-            break;
         }
         return space_removed;
     }
@@ -138,7 +137,7 @@ pub const Cursor = struct {
         self.ambitiousColumn = self.position.column;
     }
 
-    fn goToEndOfLine(self: *Self, line: ArrayList(u8)) void {
+    fn goToLineEnd(self: *Self, line: ArrayList(u8)) void {
         self.position.column = @intCast(u16, line.items.len);
     }
 
@@ -160,7 +159,7 @@ pub const Cursor = struct {
                     // We are at EOF
                     const last_line_index = @intCast(u16, lines.items.len - 1);
                     const last_line = lines.items[last_line_index];
-                    self.goToEndOfLine(last_line);
+                    self.goToLineEnd(last_line);
                 } else {
                     self.position.row += 1;
                     self.tryToReachAmbitiousColumn(lines.*);
@@ -173,7 +172,7 @@ pub const Cursor = struct {
                             // Wrap back to the previous line's end if we're not at BOF
                             if (self.position.row != 0) {
                                 self.position.row -= 1;
-                                self.goToEndOfLine(self.getCurrentLine(lines.*).*);
+                                self.goToLineEnd(self.getCurrentLine(lines.*).*);
                             }
                         } else {
                             self.position.column -|= 1;
@@ -210,13 +209,13 @@ pub const Cursor = struct {
             },
             .end => |modifier| {
                 switch (modifier) {
-                    .none => self.goToEndOfLine(self.getCurrentLine(lines.*).*),
+                    .none => self.goToLineEnd(self.getCurrentLine(lines.*).*),
                     .ctrl => {
                         const last_line_index = @intCast(u16, lines.items.len - 1);
                         const last_line = lines.items[last_line_index];
 
                         self.position.row = last_line_index;
-                        self.goToEndOfLine(last_line);
+                        self.goToLineEnd(last_line);
                     },
                 }
                 self.setAmbitiousColumn();
@@ -271,7 +270,7 @@ pub const Cursor = struct {
                                     try current_line.ensureUnusedCapacity(removed_line.items.len);
                                     current_line.appendSliceAssumeCapacity(removed_line.items);
 
-                                    self.goToEndOfLine(current_line.*);
+                                    self.goToLineEnd(current_line.*);
                                 }
                                 removed_line.deinit();
                             }
@@ -289,31 +288,27 @@ pub const Cursor = struct {
                         // We expect the amount of characters until that happens
                         // to be small enough that a linear search is appropriate
                         var remove_spaces = true;
-                        while (true) {
-                            if (self.getPreviousCharIndex()) |char_to_remove_index| {
-                                const current_line_chars = self.getCurrentLine(lines.*).items;
-                                if (current_line_chars[char_to_remove_index] == ' ') {
-                                    if (remove_spaces) {
-                                        self.removeCurrentLineChar(lines.*, char_to_remove_index);
-                                        self.position.column -= 1;
-                                        const space_removed = self.removePreviousSuccessiveSpaces(lines.*);
-                                        if (space_removed) {
-                                            break;
-                                        } else {
-                                            continue;
-                                        }
-                                    } else {
+                        while (self.getPreviousCharIndex()) |char_to_remove_index| {
+                            const current_line_chars = self.getCurrentLine(lines.*).items;
+                            if (current_line_chars[char_to_remove_index] == ' ') {
+                                if (remove_spaces) {
+                                    self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                                    self.position.column -= 1;
+                                    const space_removed = self.removePreviousSuccessiveSpaces(lines.*);
+                                    if (space_removed) {
                                         break;
+                                    } else {
+                                        continue;
                                     }
                                 } else {
-                                    remove_spaces = false;
+                                    break;
                                 }
-
-                                self.removeCurrentLineChar(lines.*, char_to_remove_index);
-                                self.position.column -= 1;
                             } else {
-                                break;
+                                remove_spaces = false;
                             }
+
+                            self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                            self.position.column -= 1;
                         }
                     },
                 }
