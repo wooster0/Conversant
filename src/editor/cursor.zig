@@ -1,4 +1,5 @@
 const std = @import("std");
+const unicode = std.unicode;
 const mem = std.mem;
 const ArrayList = std.ArrayList;
 
@@ -45,15 +46,15 @@ pub const Cursor = struct {
     /// 'A' is a half-width character.
     fn isFullWidth(char: u21) !bool {
         // Most of the time this works pretty well for many languages, including
-        // Japanese (excluding half-width katakana (TODO: handle that?)), Korean, Chinese, and others
-        return (try std.unicode.utf8CodepointSequenceLength(char)) >= 3;
+        // Japanese (excluding half-width katakana (TODO: handle that?)), Korean, Chinese, and others.
+        return (try unicode.utf8CodepointSequenceLength(char)) >= 3;
     }
 
     pub fn draw(self: Self, lines: ArrayList(Line), offset: Position) !void {
         const current_line_chars = self.getCurrentLine(lines).items;
 
         // Count all full-width characters from BOL to cursor
-        // so that we can account for them and offset the cursor properly
+        // so that we can account for them and offset the cursor properly.
         var full_width_char_count: u16 = 0;
         for (current_line_chars) |char, index| {
             if (index == self.position.column)
@@ -74,7 +75,7 @@ pub const Cursor = struct {
         } else {
             // Write the character that's below the cursor
             var bytes: [4]u8 = undefined;
-            const byte_count = try std.unicode.utf8Encode(current_line_chars[self.position.column], &bytes);
+            const byte_count = try unicode.utf8Encode(current_line_chars[self.position.column], &bytes);
             try terminal.write(bytes[0..byte_count]);
         }
         try terminal.control.resetForegroundAndBackgroundCellColor();
@@ -82,7 +83,7 @@ pub const Cursor = struct {
 
     fn insertSlice(self: *Self, lines: ArrayList(Line), bytes: []const u8) !void {
         const current_line = self.getCurrentLine(lines);
-        var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
+        var utf8_iterator = unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
         while (utf8_iterator.nextCodepoint()) |char| {
             try current_line.insert(self.position.column, char);
             self.position.column += 1;
@@ -146,7 +147,7 @@ pub const Cursor = struct {
         const current_line_len = @intCast(u16, self.getCurrentLine(lines).items.len);
         if (current_line_len < self.ambitiousColumn) {
             // If the ambitious column is out of reach,
-            // at least go to this line's end
+            // at least go to this line's end.
             self.position.column = current_line_len;
         } else {
             self.position.column = self.ambitiousColumn;
@@ -340,7 +341,7 @@ pub const Cursor = struct {
                             // Remove a whole word
 
                             // Go backwards from this point and remove all characters
-                            // until we hit a space or BOL
+                            // until we hit a space or BOL.
                             var remove_spaces = true;
                             while (self.getPreviousCharIndex()) |char_to_remove_index| {
                                 const current_line_chars = self.getCurrentLine(lines.*).items;
@@ -391,7 +392,7 @@ pub const Cursor = struct {
                             // Remove a whole word
 
                             // Go backwards from this point and remove all characters
-                            // until we hit a space or BOL
+                            // until we hit a space or BOL.
                             var remove_spaces = true;
                             while (self.getCurrentCharIndex(lines.*)) |char_to_remove_index| {
                                 const current_line_chars = self.getCurrentLine(lines.*).items;

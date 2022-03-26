@@ -71,14 +71,14 @@ fn normalizeTime(time: Time) f16 {
 }
 
 fn brightnessToHexColor(hex_color: *[6]u8, brightness: f16) void {
-    const bytes_written = std.fmt.formatIntBuf(
+    const byte_count = std.fmt.formatIntBuf(
         hex_color,
         @floatToInt(u8, brightness * 0xff),
         16,
         .lower,
         .{ .width = 2, .fill = '0' },
     );
-    assert(bytes_written == 2);
+    assert(byte_count == 2);
 
     // Fill out the rest with the first two bytes
     hex_color[2] = hex_color[0];
@@ -95,7 +95,7 @@ pub fn setTimelyBackground() !void {
     const current_local_time = getCurrentLocalTime();
     const normalized_time = normalizeTime(current_local_time);
 
-    var hex_color = [1]u8{undefined} ** 6;
+    var hex_color: [6]u8 = undefined;
 
     const background_brightness = normalized_time / 2.5; // Dampen it a bit
     brightnessToHexColor(&hex_color, background_brightness);

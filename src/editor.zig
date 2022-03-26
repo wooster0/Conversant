@@ -8,11 +8,12 @@
 //! * EOF: end of file.
 
 const std = @import("std");
-const heap = std.heap;
-const fs = std.fs;
-const math = std.math;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
+const fs = std.fs;
+const unicode = std.unicode;
+const math = std.math;
+const heap = std.heap;
 
 const Cursor = @import("editor/cursor.zig").Cursor;
 const background = @import("editor/background.zig");
@@ -80,7 +81,7 @@ pub const Editor = struct {
         var lines = try ArrayList(Line).initCapacity(allocator, raw_lines.items.len);
         for (raw_lines.items) |raw_line| {
             var line = Line.init(allocator);
-            var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = raw_line.items, .i = 0 };
+            var utf8_iterator = unicode.Utf8Iterator{ .bytes = raw_line.items, .i = 0 };
             while (utf8_iterator.nextCodepoint()) |char|
                 try line.append(char);
             lines.appendAssumeCapacity(line);
@@ -148,7 +149,7 @@ pub const Editor = struct {
 
         for (line.items) |char| {
             var bytes: [4]u8 = undefined;
-            const byte_count = try std.unicode.utf8Encode(char, &bytes);
+            const byte_count = try unicode.utf8Encode(char, &bytes);
             try terminal.write(bytes[0..byte_count]);
         }
 
@@ -166,7 +167,7 @@ fn getEditor(content: []const u8) !Editor {
     var line_iterator = mem.split(u8, content, "\n");
     while (line_iterator.next()) |line| {
         var allocatedLine = Line.init(allocator);
-        var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = line, .i = 0 };
+        var utf8_iterator = unicode.Utf8Iterator{ .bytes = line, .i = 0 };
         while (utf8_iterator.nextCodepoint()) |char|
             try allocatedLine.append(char);
         try lines.append(allocatedLine);
@@ -185,7 +186,7 @@ fn expectEditor(editor: Editor, expected: []const u8) !void {
         const actual_line = editor.lines.items[expected_line_index].items;
 
         var char_index: usize = 0;
-        var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = expected_line, .i = 0 };
+        var utf8_iterator = unicode.Utf8Iterator{ .bytes = expected_line, .i = 0 };
         while (utf8_iterator.nextCodepoint()) |expected_char| : (char_index += 1) {
             try expect(char_index < actual_line.len);
             try expectEqual(expected_char, actual_line[char_index]);
