@@ -170,6 +170,14 @@ fn press(editor: *Editor, key: terminal.input.Key) !void {
     try expect((try editor.cursor.handleKey(allocator, &editor.lines, key)) == null);
 }
 
+fn write(editor: *Editor, string: []const u8) !void {
+    const allocator = testing.allocator_instance.allocator();
+
+    for (string) |char| {
+        try expect((try editor.cursor.handleKey(allocator, &editor.lines, .{ .char = char })) == null);
+    }
+}
+
 const expectEqual = testing.expectEqual;
 
 test "insertion" {
@@ -177,30 +185,25 @@ test "insertion" {
         \\hello world
     );
 
-    try press(&editor, .{ .char = 'A' });
-    try press(&editor, .{ .char = 'B' });
-    try press(&editor, .{ .char = 'C' });
-    try expectEqual(Position{ .row = 0, .column = 3 }, editor.cursor.position);
+    try write(&editor, "hello ");
+    try expectEqual(Position{ .row = 0, .column = 6 }, editor.cursor.position);
     try expectEditor(editor,
-        \\ABChello world
+        \\hello hello world
     );
 
-    try press(&editor, .{ .right = .none });
-    try press(&editor, .{ .right = .none });
-    try press(&editor, .{ .right = .none });
-    try press(&editor, .{ .char = 'D' });
-    try press(&editor, .{ .char = 'E' });
-    try press(&editor, .{ .char = 'F' });
-    try expectEqual(Position{ .row = 0, .column = 9 }, editor.cursor.position);
+    try write(&editor, "editor ");
+    try expectEqual(Position{ .row = 0, .column = 13 }, editor.cursor.position);
     try expectEditor(editor,
-        \\ABChelDEFlo world
+        \\hello editor hello world
     );
 
     try press(&editor, .{ .end = .none });
-    try press(&editor, .{ .char = '1' });
-    try expectEqual(Position{ .row = 0, .column = 18 }, editor.cursor.position);
+    try press(&editor, .enter);
+    try write(&editor, "editor");
+    try expectEqual(Position{ .row = 1, .column = 6 }, editor.cursor.position);
     try expectEditor(editor,
-        \\ABChelDEFlo world1
+        \\hello editor hello world
+        \\editor
     );
 
     try editor.deinit();
@@ -211,7 +214,7 @@ test "cursor movement" {
         \\
         \\hello
         \\
-        \\world
+        \\world  hello editor
     );
 
     try press(&editor, .down);
@@ -233,7 +236,39 @@ test "cursor movement" {
     try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
 
     try press(&editor, .{ .end = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 19 }, editor.cursor.position);
+
+    try press(&editor, .{ .left = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 13 }, editor.cursor.position);
+
+    try press(&editor, .{ .left = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 7 }, editor.cursor.position);
+
+    try press(&editor, .{ .left = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 0 }, editor.cursor.position);
+
+    try press(&editor, .{ .right = .ctrl });
     try expectEqual(Position{ .row = 3, .column = 5 }, editor.cursor.position);
+
+    try press(&editor, .{ .right = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 12 }, editor.cursor.position);
+
+    try editor.deinit();
+
+    editor = try getEditor(
+        \\hello
+        \\
+        \\
+        \\hello editor
+    );
+
+    try press(&editor, .{ .right = .ctrl });
+    try press(&editor, .{ .right = .ctrl });
+    try expectEqual(Position{ .row = 3, .column = 5 }, editor.cursor.position);
+
+    try press(&editor, .{ .left = .ctrl });
+    try press(&editor, .{ .left = .ctrl });
+    try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
 
     try editor.deinit();
 }
@@ -242,7 +277,7 @@ test "removal" {
     var editor = try getEditor(
         \\
         \\hello world
-        \\
+        \\hello editor
     );
 
     try press(&editor, .{ .backspace = .none });
@@ -256,17 +291,64 @@ test "removal" {
     try expectEqual(Position{ .row = 0, .column = 0 }, editor.cursor.position);
     try expectEditor(editor,
         \\llo world
-        \\
+        \\hello editor
     );
 
-    try press(&editor, .{ .end = .ctrl });
+    try press(&editor, .down);
     try press(&editor, .{ .backspace = .none });
     try expectEqual(Position{ .row = 0, .column = 9 }, editor.cursor.position);
     try press(&editor, .{ .backspace = .none });
     try press(&editor, .{ .backspace = .none });
     try expectEqual(Position{ .row = 0, .column = 7 }, editor.cursor.position);
     try expectEditor(editor,
-        \\llo wor
+        \\llo worhello editor
+    );
+
+    try editor.deinit();
+
+    editor = try getEditor(
+        \\hello world
+        \\
+        \\
+        \\
+        \\
+        \\hello editor
+    );
+
+    try press(&editor, .down);
+    try press(&editor, .down);
+    try press(&editor, .down);
+    try press(&editor, .down);
+
+    try press(&editor, .{ .backspace = .none });
+    try expectEditor(editor,
+        \\hello world
+        \\
+        \\
+        \\
+        \\hello editor
+    );
+
+    try press(&editor, .{ .backspace = .ctrl });
+    try expectEditor(editor,
+        \\hello world
+        \\
+        \\
+        \\hello editor
+    );
+
+    try press(&editor, .{ .delete = .none });
+    try expectEditor(editor,
+        \\hello world
+        \\
+        \\hello editor
+    );
+
+    try press(&editor, .up);
+    try press(&editor, .{ .delete = .ctrl });
+    try expectEditor(editor,
+        \\hello world
+        \\hello editor
     );
 
     try editor.deinit();

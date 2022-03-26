@@ -141,6 +141,54 @@ pub const Cursor = struct {
         self.position.column = @intCast(u16, line.items.len);
     }
 
+    // TODO: Currently all blocks of successive non-space characters are treated as one "word".
+    //       This could be improved to treat e.g. "hello.world" as 2 words instead of 1.
+
+    fn goToNextLeftWholeWord(self: *Self, lines: Lines) void {
+        const current_line_chars = self.getCurrentLine(lines).items;
+        if (self.getPreviousCharIndex()) |current_char_index| {
+            self.position.column -= 1;
+            if (current_line_chars[current_char_index] == ' ') {
+                // Go to the right until we hit a non-space or EOL
+                while (self.getPreviousCharIndex()) |char_index| : (self.position.column -= 1)
+                    if (current_line_chars[char_index] != ' ')
+                        break;
+            }
+            // Go to the right until we hit a space or EOL
+            while (self.getPreviousCharIndex()) |char_index| : (self.position.column -= 1)
+                if (current_line_chars[char_index] == ' ')
+                    break;
+        } else if (self.position.row != 0) {
+            self.position.row -= 1;
+            self.goToLineEnd(self.getCurrentLine(lines).*);
+            // Try again
+            return self.goToNextLeftWholeWord(lines);
+        }
+        self.setAmbitiousColumn();
+    }
+    fn goToNextRightWholeWord(self: *Self, lines: Lines) void {
+        const current_line_chars = self.getCurrentLine(lines).items;
+        if (self.getCurrentCharIndex(lines)) |current_char_index| {
+            self.position.column += 1;
+            if (current_line_chars[current_char_index] == ' ') {
+                // Go to the right until we hit a non-space or EOL
+                while (self.getCurrentCharIndex(lines)) |char_index| : (self.position.column += 1)
+                    if (current_line_chars[char_index] != ' ')
+                        break;
+            }
+            // Go to the right until we hit a space or EOL
+            while (self.getCurrentCharIndex(lines)) |char_index| : (self.position.column += 1)
+                if (current_line_chars[char_index] == ' ')
+                    break;
+        } else if (self.position.row != lines.items.len - 1) {
+            self.position.row += 1;
+            self.position.column = 0;
+            // Try again
+            return self.goToNextRightWholeWord(lines);
+        }
+        self.setAmbitiousColumn();
+    }
+
     pub fn handleKey(self: *Self, allocator: mem.Allocator, lines: *Lines, key: terminal.input.Key) !?editor.Action {
         switch (key) {
             .char => |char| try self.insert(lines.*, char),
@@ -178,7 +226,7 @@ pub const Cursor = struct {
                             self.position.column -|= 1;
                         }
                     },
-                    .ctrl => unreachable,
+                    .ctrl => self.goToNextLeftWholeWord(lines.*),
                 }
                 self.setAmbitiousColumn();
             },
@@ -195,7 +243,7 @@ pub const Cursor = struct {
                             self.position.column += 1;
                         }
                     },
-                    .ctrl => unreachable,
+                    .ctrl => self.goToNextRightWholeWord(lines.*),
                 }
                 self.setAmbitiousColumn();
             },
@@ -224,119 +272,127 @@ pub const Cursor = struct {
             .page_down => unreachable,
 
             .enter => {
-                //
                 // 1. Split the current line at the cursor's column into two
-                //
                 const current_line = self.getCurrentLine(lines.*);
 
                 const lineBeforeNewline = current_line.items[0..self.position.column];
-                var allocatedLineBeforeNewline = try ArrayList(u8).initCapacity(allocator, lineBeforeNewline.len);
-                allocatedLineBeforeNewline.appendSliceAssumeCapacity(lineBeforeNewline);
 
                 const lineAfterNewline = current_line.items[self.position.column..];
                 var allocatedLineAfterNewline = try ArrayList(u8).initCapacity(allocator, lineAfterNewline.len);
                 allocatedLineAfterNewline.appendSliceAssumeCapacity(lineAfterNewline);
 
                 // 2. Replace the old line with the line before the newline
-                current_line.* = allocatedLineBeforeNewline;
+                try current_line.replaceRange(0, current_line.items.len, lineBeforeNewline);
 
                 self.position = .{
                     .row = self.position.row + 1,
                     .column = 0,
                 };
 
-                // 3. Insert the line after the newline
+                // 3. Insert the new line after the newline
                 try lines.insert(self.position.row, allocatedLineAfterNewline);
             },
             .tab => try self.insertSlice(lines.*, "    "),
 
             .backspace => |modifier| {
-                switch (modifier) {
-                    .none => {
-                        // Remove a single character
-                        if (self.getPreviousCharIndex()) |char_to_remove_index| {
-                            self.removeCurrentLineChar(lines.*, char_to_remove_index);
-                            self.position.column -= 1;
-                        } else {
-                            // We are at the beginning of the line and
-                            // there is no character on the left of the cursor to remove
-                            if (self.position.row != 0) { // BOF?
-                                // Remove the leading newline
-                                self.position.row -= 1;
-                                const removed_line = lines.orderedRemove(self.position.row);
-                                if (removed_line.items.len != 0) {
-                                    const current_line = self.getCurrentLine(lines.*);
-                                    // Append the items to the current line
-                                    try current_line.ensureUnusedCapacity(removed_line.items.len);
-                                    current_line.appendSliceAssumeCapacity(removed_line.items);
-
-                                    self.goToLineEnd(current_line.*);
-                                }
-                                removed_line.deinit();
-                            }
+                if (self.getPreviousCharIndex() == null) {
+                    // We are at BOL and there is no character on the left of the cursor to remove
+                    if (self.position.row != 0) { // BOF?
+                        // Remove the leading newline
+                        self.position.row -= 1;
+                        const removed_line = lines.orderedRemove(self.position.row);
+                        if (removed_line.items.len != 0) {
+                            try lines.items[self.position.row].insertSlice(0, removed_line.items);
+                            self.position.column = @intCast(u16, removed_line.items.len);
                         }
-                    },
-                    .ctrl => {
-                        // Remove a whole word
+                        removed_line.deinit();
+                    }
+                } else {
+                    switch (modifier) {
+                        .none => {
+                            // Remove a single character
+                            self.removeCurrentLineChar(lines.*, self.getPreviousCharIndex().?);
+                            self.position.column -= 1;
+                        },
+                        .ctrl => {
+                            // Remove a whole word
 
-                        // TODO: Currently all blocks of successive non-space characters are treated as one "word".
-                        //       This could be improved to treat e.g. "hello.world" as 2 words instead of 1.
-
-                        // Go backwards from this point and remove all characters
-                        // until we hit a space or BOL
-                        //
-                        // We expect the amount of characters until that happens
-                        // to be small enough that a linear search is appropriate
-                        var remove_spaces = true;
-                        while (self.getPreviousCharIndex()) |char_to_remove_index| {
-                            const current_line_chars = self.getCurrentLine(lines.*).items;
-                            if (current_line_chars[char_to_remove_index] == ' ') {
-                                if (remove_spaces) {
-                                    self.removeCurrentLineChar(lines.*, char_to_remove_index);
-                                    self.position.column -= 1;
-                                    const space_removed = self.removePreviousSuccessiveSpaces(lines.*);
-                                    if (space_removed) {
-                                        break;
+                            // Go backwards from this point and remove all characters
+                            // until we hit a space or BOL
+                            var remove_spaces = true;
+                            while (self.getPreviousCharIndex()) |char_to_remove_index| {
+                                const current_line_chars = self.getCurrentLine(lines.*).items;
+                                if (current_line_chars[char_to_remove_index] == ' ') {
+                                    if (remove_spaces) {
+                                        self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                                        self.position.column -= 1;
+                                        const space_removed = self.removePreviousSuccessiveSpaces(lines.*);
+                                        if (space_removed) {
+                                            break;
+                                        } else {
+                                            continue;
+                                        }
                                     } else {
-                                        continue;
+                                        break;
                                     }
                                 } else {
-                                    break;
+                                    remove_spaces = false;
                                 }
-                            } else {
-                                remove_spaces = false;
-                            }
 
-                            self.removeCurrentLineChar(lines.*, char_to_remove_index);
-                            self.position.column -= 1;
-                        }
-                    },
+                                self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                                self.position.column -= 1;
+                            }
+                        },
+                    }
                 }
                 self.setAmbitiousColumn();
             },
             .delete => |modifier| {
-                switch (modifier) {
-                    .none => {
-                        // Remove the character the cursor is on
-                        if (self.getCurrentCharIndex(lines.*)) |char_to_remove_index| {
-                            self.removeCurrentLineChar(lines.*, char_to_remove_index);
-                        } else {
-                            // We are at the end of the line and
-                            // there is no character on the cursor to remove
-                            if (self.position.row != lines.items.len - 1) { // EOF?
-                                // Remove the trailing newline
-                                const removed_line = lines.orderedRemove(self.position.row + 1);
-                                if (removed_line.items.len != 0) {
-                                    const current_line = self.getCurrentLine(lines.*);
-                                    // Append the items to the current line
-                                    try current_line.ensureUnusedCapacity(removed_line.items.len);
-                                    current_line.appendSliceAssumeCapacity(removed_line.items);
-                                }
-                                removed_line.deinit();
-                            }
+                if (self.getCurrentCharIndex(lines.*) == null) {
+                    // We are at EOL and there is no character on the cursor to remove
+                    if (self.position.row != lines.items.len - 1) { // EOF?
+                        // Remove the trailing newline
+                        const removed_line = lines.orderedRemove(self.position.row + 1);
+                        if (removed_line.items.len != 0) {
+                            const current_line = self.getCurrentLine(lines.*);
+                            try current_line.appendSlice(removed_line.items);
                         }
-                    },
-                    .ctrl => {},
+                        removed_line.deinit();
+                    }
+                } else {
+                    switch (modifier) {
+                        .none => {
+                            // Remove the character the cursor is on
+                            self.removeCurrentLineChar(lines.*, self.getCurrentCharIndex(lines.*).?);
+                        },
+                        .ctrl => {
+                            // Remove a whole word
+
+                            // Go backwards from this point and remove all characters
+                            // until we hit a space or BOL
+                            var remove_spaces = true;
+                            while (self.getCurrentCharIndex(lines.*)) |char_to_remove_index| {
+                                const current_line_chars = self.getCurrentLine(lines.*).items;
+                                if (current_line_chars[char_to_remove_index] == ' ') {
+                                    if (remove_spaces) {
+                                        self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                                        const space_removed = self.removePreviousSuccessiveSpaces(lines.*);
+                                        if (space_removed) {
+                                            break;
+                                        } else {
+                                            continue;
+                                        }
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    remove_spaces = false;
+                                }
+
+                                self.removeCurrentLineChar(lines.*, char_to_remove_index);
+                            }
+                        },
+                    }
                 }
             },
 
