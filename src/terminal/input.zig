@@ -4,9 +4,8 @@ const assert = std.debug.assert;
 
 const stdin = io.getStdIn();
 
-/// The key that was pressed.
-pub const Key = union(enum) {
-    char: u8,
+pub const Input = union(enum) {
+    bytes: []const u8,
 
     up,
     down,
@@ -18,7 +17,7 @@ pub const Key = union(enum) {
     page_up, // TODO: implement the modifiers
     page_down, // TODO: implement the modifiers
 
-    enter,
+    enter, // It seems this has no modifiers in many if not most terminals
     tab,
 
     backspace: Modifier,
@@ -27,21 +26,21 @@ pub const Key = union(enum) {
     esc,
 };
 
-/// The key that was pressed in addition to the other one.
+/// A key that was pressed in addition to the `Input`.
 const Modifier = enum {
     none,
     ctrl,
 };
 
 const stdin_reader = stdin.reader();
-pub fn read() !Key {
-    var buffer = [1]u8{undefined} ** 6;
-    var bytes_read = try stdin_reader.read(&buffer);
-    @import("../main.zig").debug("{s}", .{buffer[0..bytes_read]});
-    return parseInput(buffer[0..bytes_read]);
+pub fn read() !Input {
+    var buffer: [6]u8 = undefined;
+    var byte_count = try stdin_reader.read(&buffer);
+    @import("../main.zig").debug("{s}", .{buffer[0..byte_count]});
+    return parseInput(buffer[0..byte_count]);
 }
 
-fn parseInput(buffer: []const u8) Key {
+fn parseInput(buffer: []const u8) Input {
     return switch (buffer[0]) {
         '\x1b' => {
             if (buffer.len == 1)
@@ -101,6 +100,6 @@ fn parseInput(buffer: []const u8) Key {
         '\t' => .tab,
         0x7F => .{ .backspace = .none },
         0x17 => .{ .backspace = .ctrl },
-        else => .{ .char = buffer[0] },
+        else => .{ .bytes = buffer },
     };
 }

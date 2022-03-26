@@ -5,8 +5,7 @@ const ArrayList = std.ArrayList;
 const terminal = @import("../terminal.zig");
 const Position = @import("../main.zig").Position;
 const editor = @import("../editor.zig");
-// In here the representation doesn't matter as much so we can use a type alias.
-const Lines = ArrayList(ArrayList(u8));
+const Line = editor.Line;
 
 pub const Cursor = struct {
     const Self = @This();
@@ -41,36 +40,57 @@ pub const Cursor = struct {
         });
     }
 
-    pub fn draw(self: Self, lines: Lines, offset: Position) !void {
-        try self.setPositionWithOffset(offset);
-        try terminal.control.setBlackOnWhiteBackgroundCellColor();
+    /// Returns whether or not the given character is full-width.
+    /// 'Ａ' is a full-width character.
+    /// 'A' is a half-width character.
+    fn isFullWidth(char: u21) !bool {
+        // Most of the time this works pretty well for many languages, including
+        // Japanese (excluding half-width katakana (TODO: handle that?)), Korean, Chinese, and others
+        return (try std.unicode.utf8CodepointSequenceLength(char)) >= 3;
+    }
 
-        // Write the character that's below the cursor
+    pub fn draw(self: Self, lines: ArrayList(Line), offset: Position) !void {
         const current_line_chars = self.getCurrentLine(lines).items;
+
+        // Count all full-width characters from BOL to cursor
+        // so that we can account for them and offset the cursor properly
+        var full_width_char_count: u16 = 0;
+        for (current_line_chars) |char, index| {
+            if (index == self.position.column)
+                break;
+            if (try isFullWidth(char))
+                full_width_char_count += 1;
+        }
+
+        try self.setPositionWithOffset(.{
+            .row = offset.row,
+            .column = offset.column + full_width_char_count,
+        });
+
+        try terminal.control.setBlackOnWhiteBackgroundCellColor();
         if (self.position.column >= current_line_chars.len) {
-            // If the index would be out of bounds, still draw the cursor
+            // If there is no character on the cursor, still draw it
             try terminal.writeByte(' ');
         } else {
-            try terminal.writeByte(current_line_chars[self.position.column]);
+            // Write the character that's below the cursor
+            var bytes: [4]u8 = undefined;
+            const byte_count = try std.unicode.utf8Encode(current_line_chars[self.position.column], &bytes);
+            try terminal.write(bytes[0..byte_count]);
         }
         try terminal.control.resetForegroundAndBackgroundCellColor();
     }
 
-    fn insert(self: *Self, lines: Lines, char: u8) !void {
+    fn insertSlice(self: *Self, lines: ArrayList(Line), bytes: []const u8) !void {
         const current_line = self.getCurrentLine(lines);
-        try current_line.insert(self.position.column, char);
-        self.position.column += 1;
+        var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
+        while (utf8_iterator.nextCodepoint()) |char| {
+            try current_line.insert(self.position.column, char);
+            self.position.column += 1;
+        }
         self.setAmbitiousColumn();
     }
 
-    fn insertSlice(self: *Self, lines: Lines, slice: []const u8) !void {
-        const current_line = self.getCurrentLine(lines);
-        try current_line.insertSlice(self.position.column, slice);
-        self.position.column += @intCast(u16, slice.len);
-        self.setAmbitiousColumn();
-    }
-
-    fn getCurrentLine(self: Self, lines: Lines) *ArrayList(u8) {
+    fn getCurrentLine(self: Self, lines: ArrayList(Line)) *Line {
         return &lines.items[self.position.row];
     }
 
@@ -89,7 +109,7 @@ pub const Cursor = struct {
     /// Returns the index of the character on the cursor, on the current line.
     ///
     /// If the cursor is at the EOL, this returns `null`.
-    fn getCurrentCharIndex(self: Self, lines: Lines) ?u16 {
+    fn getCurrentCharIndex(self: Self, lines: ArrayList(Line)) ?u16 {
         const current_line_chars = self.getCurrentLine(lines).items;
         if (self.position.column == current_line_chars.len) {
             // There is no character before this
@@ -99,14 +119,14 @@ pub const Cursor = struct {
         }
     }
 
-    fn removeCurrentLineChar(self: Self, lines: Lines, index: u16) void {
+    fn removeCurrentLineChar(self: Self, lines: ArrayList(Line), index: u16) void {
         const current_line = self.getCurrentLine(lines);
         _ = current_line.orderedRemove(index);
     }
 
     /// Removes all consecutive spaces before the cursor
     /// and returns whether or not a space was removed.
-    fn removePreviousSuccessiveSpaces(self: *Self, lines: Lines) bool {
+    fn removePreviousSuccessiveSpaces(self: *Self, lines: ArrayList(Line)) bool {
         var space_removed = false;
         const current_line_chars = self.getCurrentLine(lines).items;
         while (self.getPreviousCharIndex()) |char_to_remove_index| {
@@ -122,7 +142,7 @@ pub const Cursor = struct {
         return space_removed;
     }
 
-    fn tryToReachAmbitiousColumn(self: *Self, lines: Lines) void {
+    fn tryToReachAmbitiousColumn(self: *Self, lines: ArrayList(Line)) void {
         const current_line_len = @intCast(u16, self.getCurrentLine(lines).items.len);
         if (current_line_len < self.ambitiousColumn) {
             // If the ambitious column is out of reach,
@@ -137,14 +157,14 @@ pub const Cursor = struct {
         self.ambitiousColumn = self.position.column;
     }
 
-    fn goToLineEnd(self: *Self, line: ArrayList(u8)) void {
+    fn goToLineEnd(self: *Self, line: Line) void {
         self.position.column = @intCast(u16, line.items.len);
     }
 
     // TODO: Currently all blocks of successive non-space characters are treated as one "word".
     //       This could be improved to treat e.g. "hello.world" as 2 words instead of 1.
 
-    fn goToNextLeftWholeWord(self: *Self, lines: Lines) void {
+    fn goToNextLeftWholeWord(self: *Self, lines: ArrayList(Line)) void {
         const current_line_chars = self.getCurrentLine(lines).items;
         if (self.getPreviousCharIndex()) |current_char_index| {
             self.position.column -= 1;
@@ -166,7 +186,7 @@ pub const Cursor = struct {
         }
         self.setAmbitiousColumn();
     }
-    fn goToNextRightWholeWord(self: *Self, lines: Lines) void {
+    fn goToNextRightWholeWord(self: *Self, lines: ArrayList(Line)) void {
         const current_line_chars = self.getCurrentLine(lines).items;
         if (self.getCurrentCharIndex(lines)) |current_char_index| {
             self.position.column += 1;
@@ -189,9 +209,11 @@ pub const Cursor = struct {
         self.setAmbitiousColumn();
     }
 
-    pub fn handleKey(self: *Self, allocator: mem.Allocator, lines: *Lines, key: terminal.input.Key) !?editor.Action {
-        switch (key) {
-            .char => |char| try self.insert(lines.*, char),
+    pub fn handleInput(self: *Self, allocator: mem.Allocator, lines: *ArrayList(Line), input: terminal.input.Input) !?editor.Action {
+        switch (input) {
+            .bytes => |bytes| {
+                try self.insertSlice(lines.*, bytes);
+            },
 
             .up => {
                 if (self.position.row == 0) {
@@ -278,7 +300,7 @@ pub const Cursor = struct {
                 const lineBeforeNewline = current_line.items[0..self.position.column];
 
                 const lineAfterNewline = current_line.items[self.position.column..];
-                var allocatedLineAfterNewline = try ArrayList(u8).initCapacity(allocator, lineAfterNewline.len);
+                var allocatedLineAfterNewline = try Line.initCapacity(allocator, lineAfterNewline.len);
                 allocatedLineAfterNewline.appendSliceAssumeCapacity(lineAfterNewline);
 
                 // 2. Replace the old line with the line before the newline
