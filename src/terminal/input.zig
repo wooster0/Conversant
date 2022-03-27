@@ -107,8 +107,15 @@ fn parseInput(buffer: []const u8) Input {
                             }
                         },
                         '3' => {
-                            assert(buffer[3] == '~');
-                            return .{ .delete = .none };
+                            switch (buffer[3]) {
+                                '~' => return .{ .delete = .none },
+                                ';' => {
+                                    assert(buffer[4] == '5');
+                                    assert(buffer[5] == '~');
+                                    return .{ .delete = .ctrl };
+                                },
+                                else => unreachable,
+                            }
                         },
                         '5' => {
                             assert(buffer[3] == '~');
@@ -129,6 +136,7 @@ fn parseInput(buffer: []const u8) Input {
         '\t' => .tab,
         0x7F => .{ .backspace = .none },
         0x17 => .{ .backspace = .ctrl },
+        0x08 => .{ .backspace = .ctrl }, // For XTerm
         else => .{ .bytes = buffer },
     };
 }
