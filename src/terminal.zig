@@ -79,10 +79,10 @@ const OSC = "\x1b]";
 /// Alert/beep/bell escape sequence.
 const alert = "\x07";
 
+/// This is responsible for configuring the terminal.
 pub const config = struct {
     var original_termios: os.termios = undefined;
 
-    /// Initializes the terminal.
     fn init() !void {
         original_termios = try getTermios();
 
@@ -101,12 +101,8 @@ pub const config = struct {
         };
         os.sigaction(os.SIG.WINCH, &handler, null);
     }
-
     fn deinit() !void {
         try applyTermios(original_termios);
-
-        try disableAlternativeScreenBuffer();
-        try showCursor();
     }
 
     fn getTermios() !os.termios {
