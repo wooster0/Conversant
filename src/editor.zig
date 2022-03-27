@@ -111,7 +111,7 @@ pub const Editor = struct {
     }
 
     fn handleEvents(self: *Self, allocator: mem.Allocator) !?Action {
-        const read_input = try terminal.input.read();
+        const read_input = (try terminal.read()) orelse return null;
 
         return self.cursor.handleInput(allocator, &self.lines, read_input);
     }

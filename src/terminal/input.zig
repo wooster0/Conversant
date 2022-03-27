@@ -1,8 +1,8 @@
 const std = @import("std");
-const io = std.io;
+const os = std.os;
 const assert = std.debug.assert;
 
-const stdin = io.getStdIn();
+const stdin = std.io.getStdIn();
 
 pub const Input = union(enum) {
     bytes: []const u8,
@@ -32,10 +32,39 @@ const Modifier = enum {
     ctrl,
 };
 
-const stdin_reader = stdin.reader();
-pub fn read() !Input {
+var file_descriptors = [_]os.pollfd{os.pollfd{
+    .fd = stdin.handle,
+    .events = os.POLL.IN, // Await input
+    .revents = 0,
+}};
+pub fn read() !?Input {
+    // `std.os.ppoll` will block until there's terminal input or a signal was received.
+    // We specify no timeout and no signal mask.
+    //
+    // A signal mask specifies the signals to block during this `std.os.ppoll`.
+    //
+    // Having no signal mask means that we will get `std.os.E.INTR` ("interrupt") if any signals
+    // are received.
+    // This is important for `std.os.SIG.WINCH` because if we receive it, `terminal.size`
+    // will be updated and we want to stop blocking any potential screen redraws using the updated
+    // `terminal.size` after this.
+    //
+    // We could make it so that we block all signals except `std.os.SIG.WINCH` by setting the
+    // signal mask using `sigfillset` and `sigdelset` but we don't have to.
+    //
+    // We don't get the same behavior with `std.os.poll`.
+    //
+    // For an alternative solution to this, see the comment in `terminal.setTermios`.
+    _ = std.os.ppoll(&file_descriptors, null, null) catch |err| {
+        if (err == std.os.PPollError.SignalInterrupt)
+            // Stop blocking
+            return null;
+        return err;
+    };
+
+    // We are ready to read data
     var buffer: [6]u8 = undefined;
-    var byte_count = try stdin_reader.read(&buffer);
+    var byte_count = try stdin.read(&buffer);
     @import("../main.zig").debug("{s}", .{buffer[0..byte_count]});
     return parseInput(buffer[0..byte_count]);
 }

@@ -210,7 +210,7 @@ pub const Cursor = struct {
         self.setAmbitiousColumn();
     }
 
-    pub fn handleInput(self: *Self, allocator: mem.Allocator, lines: *ArrayList(Line), input: terminal.input.Input) !?editor.Action {
+    pub fn handleInput(self: *Self, allocator: mem.Allocator, lines: *ArrayList(Line), input: terminal.Input) !?editor.Action {
         switch (input) {
             .bytes => |bytes| {
                 try self.insertSlice(lines.*, bytes);
