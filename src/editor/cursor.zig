@@ -371,7 +371,18 @@ pub const Cursor = struct {
                 self.setAmbitiousColumn();
             },
             .delete => |modifier| {
-                if (self.getCurrentCharIndex(lines.*) == null) {
+                if (modifier == .shift) {
+                    // Remove the current line
+                    if (lines.items.len == 1) {
+                        // This is our only line so clear it
+                        lines.items[0].clearRetainingCapacity();
+                    } else {
+                        const line = lines.orderedRemove(self.position.row);
+                        line.deinit();
+                        self.position.row -|= 1;
+                        self.position.column = 0;
+                    }
+                } else if (self.getCurrentCharIndex(lines.*) == null) {
                     // We are at EOL and there is no character on the cursor to remove
                     if (self.position.row != lines.items.len - 1) { // EOF?
                         // Remove the trailing newline
@@ -388,6 +399,7 @@ pub const Cursor = struct {
                             // Remove the character the cursor is on
                             self.removeCurrentLineChar(lines.*, self.getCurrentCharIndex(lines.*).?);
                         },
+                        .shift => unreachable,
                         .ctrl => {
                             // Remove a whole word
 

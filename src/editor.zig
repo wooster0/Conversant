@@ -191,11 +191,12 @@ fn expectEditor(editor: Editor, expected: []const u8) !void {
             try expect(char_index < actual_line.len);
             try expectEqual(expected_char, actual_line[char_index]);
         }
+        try expectEqual(char_index, actual_line.len);
     }
 }
 
 /// Inputs and emulates input to the editor.
-fn input(editor: *Editor, input_to_emulate: terminal.input.Input) !void {
+fn input(editor: *Editor, input_to_emulate: terminal.Input) !void {
     const allocator = testing.allocator_instance.allocator();
 
     try expect((try editor.cursor.handleInput(allocator, &editor.lines, input_to_emulate)) == null);
@@ -397,6 +398,14 @@ test "removal" {
     try expectEditor(editor,
         \\
         \\editor
+    );
+
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .bytes = "hello" });
+    try input(&editor, .{ .delete = .shift });
+    try expectEditor(editor,
+        \\
     );
 
     try editor.deinit();

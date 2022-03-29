@@ -4,32 +4,38 @@ const assert = std.debug.assert;
 
 const stdin = std.io.getStdIn();
 
+/// This represents a key that was pressed in addition to the `Input`.
+const CTRLModifier = enum {
+    none,
+    ctrl,
+};
+/// This represents a key that was pressed in addition to the `Input`.
+const ShiftCTRLModifier = enum {
+    none,
+    shift,
+    ctrl,
+};
+
 pub const Input = union(enum) {
     bytes: []const u8,
 
     up,
     down,
-    left: Modifier,
-    right: Modifier,
+    left: CTRLModifier,
+    right: CTRLModifier,
 
-    home: Modifier,
-    end: Modifier,
+    home: CTRLModifier,
+    end: CTRLModifier,
     page_up, // TODO: implement the modifiers
     page_down, // TODO: implement the modifiers
 
     enter, // It seems this has no modifiers in many if not most terminals
     tab,
 
-    backspace: Modifier,
-    delete: Modifier,
+    backspace: CTRLModifier,
+    delete: ShiftCTRLModifier,
 
     esc,
-};
-
-/// A key that was pressed in addition to the `Input`.
-const Modifier = enum {
-    none,
-    ctrl,
 };
 
 var file_descriptors = [_]os.pollfd{os.pollfd{
@@ -110,9 +116,17 @@ fn parseInput(buffer: []const u8) Input {
                             switch (buffer[3]) {
                                 '~' => return .{ .delete = .none },
                                 ';' => {
-                                    assert(buffer[4] == '5');
-                                    assert(buffer[5] == '~');
-                                    return .{ .delete = .ctrl };
+                                    switch (buffer[4]) {
+                                        '5' => {
+                                            // For XTerm
+                                            assert(buffer[5] == '~');
+                                            return .{ .delete = .ctrl };
+                                        },
+                                        '2' => {
+                                            return .{ .delete = .shift };
+                                        },
+                                        else => unreachable,
+                                    }
                                 },
                                 else => unreachable,
                             }
