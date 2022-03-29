@@ -11,19 +11,19 @@ pub const Size = struct { width: u16, height: u16 };
 
 fn initTerminal() !void {
     try terminal.init();
-    try terminal.config.enableAlternativeScreenBuffer();
+    try terminal.control.enableAlternativeScreenBuffer();
 
     // We don't need the inbuilt cursor because there could be
     // multiple cursors (e.g. multi-cursor select) and so we need to draw them by ourselves.
-    try terminal.config.hideCursor();
+    try terminal.cursor.hide();
 
     // A flush for this will follow later
 }
 
 fn deinitTerminal() !void {
     try terminal.deinit();
-    try terminal.config.disableAlternativeScreenBuffer();
-    try terminal.config.showCursor();
+    try terminal.control.disableAlternativeScreenBuffer();
+    try terminal.cursor.show();
     try terminal.flush();
 }
 

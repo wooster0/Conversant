@@ -36,6 +36,7 @@ pub const writeByteNTimes = writing.writer.writeByteNTimes;
 pub const print = writing.writer.print;
 pub const flush = writing.flush;
 
+/// The size of the terminal in cells.
 pub var size: Size = undefined;
 
 fn isSupported() bool {
@@ -70,17 +71,8 @@ export fn setSize(signal: c_int, info: *const std.os.linux.siginfo_t, context: ?
     size = getSize() catch return;
 }
 
-/// Control Sequence Indicator.
-const CSI = "\x1b[";
-
-/// Operating System Command.
-const OSC = "\x1b]";
-
-/// Alert/beep/bell escape sequence.
-const alert = "\x07";
-
-/// This is responsible for configuring the terminal.
-pub const config = struct {
+/// This is responsible for configuring and initializing the terminal.
+const config = struct {
     var original_termios: os.termios = undefined;
 
     fn init() !void {
@@ -124,21 +116,16 @@ pub const config = struct {
     fn applyTermios(termios: os.termios) !void {
         try os.tcsetattr(stdout.handle, .FLUSH, termios);
     }
-
-    pub fn showCursor() !void {
-        try write(CSI ++ "?25h");
-    }
-    pub fn hideCursor() !void {
-        try write(CSI ++ "?25l");
-    }
-
-    pub fn enableAlternativeScreenBuffer() !void {
-        try write(CSI ++ "?1049h");
-    }
-    pub fn disableAlternativeScreenBuffer() !void {
-        try write(CSI ++ "?1049l");
-    }
 };
+
+/// Control Sequence Indicator.
+const CSI = "\x1b[";
+
+/// Operating System Command.
+const OSC = "\x1b]";
+
+/// Alert/beep/bell escape sequence.
+const alert = "\x07";
 
 pub const cursor = struct {
     pub fn setPosition(position: Position) !void {
@@ -150,9 +137,23 @@ pub const cursor = struct {
     pub fn reset() !void {
         try write(CSI ++ ";H");
     }
+
+    pub fn show() !void {
+        try write(CSI ++ "?25h");
+    }
+    pub fn hide() !void {
+        try write(CSI ++ "?25l");
+    }
 };
 
 pub const control = struct {
+    pub fn enableAlternativeScreenBuffer() !void {
+        try write(CSI ++ "?1049h");
+    }
+    pub fn disableAlternativeScreenBuffer() !void {
+        try write(CSI ++ "?1049l");
+    }
+
     /// Clears the entire screen.
     pub fn clear() !void {
         try write(CSI ++ "2J");
