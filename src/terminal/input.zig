@@ -80,56 +80,46 @@ fn parseInput(buffer: []const u8) Input {
         '\x1b' => {
             if (buffer.len == 1)
                 return .esc;
-            switch (buffer[1]) {
+            return switch (buffer[1]) {
                 '[' => {
-                    switch (buffer[2]) {
-                        'A' => return .up,
-                        'B' => return .down,
-                        'C' => return .{ .right = .none },
-                        'D' => return .{ .left = .none },
-                        'F' => return .{ .end = .none },
-                        'H' => return .{ .home = .none },
+                    return switch (buffer[2]) {
+                        'A' => .up,
+                        'B' => .down,
+                        'C' => .{ .right = .none },
+                        'D' => .{ .left = .none },
+                        'F' => .{ .end = .none },
+                        'H' => .{ .home = .none },
                         '1' => {
                             assert(buffer[3] == ';');
                             switch (buffer[4]) {
                                 '5' => {
-                                    switch (buffer[5]) {
-                                        'C' => {
-                                            return .{ .right = .ctrl };
-                                        },
-                                        'D' => {
-                                            return .{ .left = .ctrl };
-                                        },
-                                        'F' => {
-                                            return .{ .end = .ctrl };
-                                        },
-                                        'H' => {
-                                            return .{ .home = .ctrl };
-                                        },
+                                    return switch (buffer[5]) {
+                                        'C' => .{ .right = .ctrl },
+                                        'D' => .{ .left = .ctrl },
+                                        'F' => .{ .end = .ctrl },
+                                        'H' => .{ .home = .ctrl },
                                         else => unreachable,
-                                    }
+                                    };
                                 },
                                 else => unreachable,
                             }
                         },
                         '3' => {
-                            switch (buffer[3]) {
-                                '~' => return .{ .delete = .none },
+                            return switch (buffer[3]) {
+                                '~' => .{ .delete = .none },
                                 ';' => {
-                                    switch (buffer[4]) {
+                                    return switch (buffer[4]) {
                                         '5' => {
                                             // For XTerm
                                             assert(buffer[5] == '~');
                                             return .{ .delete = .ctrl };
                                         },
-                                        '2' => {
-                                            return .{ .delete = .shift };
-                                        },
+                                        '2' => .{ .delete = .shift },
                                         else => unreachable,
-                                    }
+                                    };
                                 },
                                 else => unreachable,
-                            }
+                            };
                         },
                         '5' => {
                             assert(buffer[3] == '~');
@@ -140,11 +130,11 @@ fn parseInput(buffer: []const u8) Input {
                             return .page_down;
                         },
                         else => unreachable,
-                    }
+                    };
                 },
-                'd' => return .{ .delete = .ctrl },
+                'd' => .{ .delete = .ctrl },
                 else => unreachable,
-            }
+            };
         },
         '\r' => .enter,
         '\t' => .tab,
