@@ -187,7 +187,7 @@ pub const control = struct {
     }
 
     /// Sets the window's title.
-    pub fn setTitle(title: []const u8) !void {
-        try print(OSC ++ "0;{s}" ++ alert, .{title});
+    pub fn setTitle(comptime format: []const u8, args: anytype) !void {
+        try print(OSC ++ "0;" ++ format ++ alert, args);
     }
 };

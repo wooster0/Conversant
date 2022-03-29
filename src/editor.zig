@@ -47,12 +47,21 @@ pub const Editor = struct {
     lines: ArrayList(Line),
     cursor: Cursor = .{},
 
+    /// Sets the window's title that indicates the file that is currently edited.
+    fn setTitle(file_name: []const u8) !void {
+        try terminal.control.setTitle("{s} - Conversant", .{file_name});
+    }
+
     pub fn new(allocator: mem.Allocator) !Self {
         try background.setTimelyBackground();
 
         // Start with one, empty line
         var lines = try ArrayList(Line).initCapacity(allocator, 1);
         lines.appendAssumeCapacity(Line.init(allocator));
+
+        // To distinguish from any possible real file names, this "file name" starts with a forward slash
+        // which is illegal on most systems
+        try setTitle("/new file/");
 
         return Self{ .lines = lines };
     }
@@ -88,6 +97,8 @@ pub const Editor = struct {
         }
 
         raw_lines.deinit();
+
+        try setTitle(path);
 
         return Self{ .lines = lines };
     }
