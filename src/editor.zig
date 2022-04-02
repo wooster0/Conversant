@@ -17,13 +17,29 @@ const heap = std.heap;
 
 const Cursor = @import("editor/cursor.zig").Cursor;
 const background = @import("editor/background.zig");
-
 const terminal = @import("terminal.zig");
 const Position = @import("main.zig").Position;
 
 pub const Action = enum { exit };
 
-pub const Line = ArrayList(u21);
+/// A Unicode codepoint that, when required, can be decoded to bytes on the fly.
+pub const Char = u21;
+
+pub const Line = ArrayList(Char);
+
+/// Returns whether or not the given character is full-width.
+/// 'Ａ' is a full-width character.
+/// 'A' is a half-width character.
+pub fn isFullWidthChar(char: Char) !bool {
+    // Most of the time this works pretty well for many languages, including
+    // Japanese (excluding half-width katakana (TODO: handle that?)), Korean, Chinese, and others.
+    return (try unicode.utf8CodepointSequenceLength(char)) >= 3;
+}
+
+/// Returns a character's width in columns.
+fn getCharWidth(char: Char) !u16 {
+    return if (try isFullWidthChar(char)) 2 else 1;
+}
 
 pub const Editor = struct {
     const Self = @This();
@@ -70,6 +86,7 @@ pub const Editor = struct {
         try background.setTimelyBackground();
 
         const file = try fs.cwd().openFileZ(path, .{});
+        defer file.close();
 
         var raw_lines = ArrayList(ArrayList(u8)).init(allocator);
         while (true) {
@@ -131,41 +148,63 @@ pub const Editor = struct {
         try terminal.control.clear();
         try terminal.cursor.reset();
 
-        const padding = std.fmt.count("{}", .{self.lines.items.len});
+        const max_line_number_width = @intCast(u16, std.fmt.count("{}|", .{self.lines.items.len}));
         const line_number_count = @minimum(terminal.size.height - 1, self.lines.items.len);
 
+        var wrap_count: u16 = 0;
         var row: usize = 0;
         while (row < line_number_count) : (row += 1) {
             const line_number = row + 1;
             const line = self.lines.items[row];
-            try drawLine(line_number, padding, line);
+
+            const additional_wrap_count = try drawLine(line_number, max_line_number_width, line);
+            const is_current_line = row < self.cursor.position.row;
+            if (is_current_line)
+                wrap_count += additional_wrap_count;
         }
 
-        const offset = Position{ .row = 0, .column = @intCast(u16, padding) + 1 };
-
-        try self.cursor.draw(self.lines, offset);
+        try self.cursor.draw(self.lines, max_line_number_width, wrap_count);
 
         try terminal.flush();
     }
 
     /// Draws a row's line: the line number followed by the line content.
-    fn drawLine(line_number: usize, padding: usize, line: Line) !void {
+    fn drawLine(line_number: usize, max_line_number_width: u16, line: Line) !u16 {
         try terminal.print(
             "{[0]:>[1]}│",
             .{
                 line_number,
-                padding,
+                max_line_number_width - 1, // Minus the vertical bar
             },
         );
 
+        var wrap_count: u16 = 0;
+        var line_width = max_line_number_width;
         for (line.items) |char| {
-            var bytes: [4]u8 = undefined;
-            const byte_count = try unicode.utf8Encode(char, &bytes);
-            try terminal.write(bytes[0..byte_count]);
+            if ((try isFullWidthChar(char)) and line_width + try getCharWidth(char) >= terminal.size.width) {
+                try terminal.cursor.setToBeginningOfNextLine();
+                var space_count = max_line_number_width;
+                try terminal.writeByteNTimes(' ', space_count);
+                line_width = space_count;
+
+                wrap_count += 1;
+            }
+
+            try terminal.writeChar(char);
+            line_width += try getCharWidth(char);
+
+            if (line_width >= terminal.size.width) {
+                var space_count = max_line_number_width;
+                try terminal.writeByteNTimes(' ', space_count);
+                line_width = space_count;
+
+                wrap_count += 1;
+            }
         }
 
-        try terminal.writeByte('\r'); // Go to BOL
-        try terminal.writeByte('\n'); // Go to next line
+        try terminal.cursor.setToBeginningOfNextLine();
+
+        return wrap_count;
     }
 };
 

@@ -52,7 +52,7 @@ pub fn read() !?Input {
     // Having no signal mask means that we will get `std.os.E.INTR` ("interrupt") if any signals
     // are received.
     // This is important for `std.os.SIG.WINCH` because if we receive it, `terminal.size`
-    // will be updated and we want to stop blocking any potential screen redraws using the updated
+    // will be updated and we want to stop blocking any potential redraws using the updated
     // `terminal.size` after this.
     //
     // We could make it so that we block all signals except `std.os.SIG.WINCH` by setting the
@@ -71,7 +71,6 @@ pub fn read() !?Input {
     // We are ready to read data
     var buffer: [6]u8 = undefined;
     var byte_count = try stdin.read(&buffer);
-    @import("../main.zig").debug("{s}", .{buffer[0..byte_count]});
     return parseInput(buffer[0..byte_count]);
 }
 

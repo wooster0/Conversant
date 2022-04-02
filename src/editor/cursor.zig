@@ -6,6 +6,7 @@ const ArrayList = std.ArrayList;
 const terminal = @import("../terminal.zig");
 const Position = @import("../main.zig").Position;
 const editor = @import("../editor.zig");
+const Char = editor.Char;
 const Line = editor.Line;
 
 pub const Cursor = struct {
@@ -33,51 +34,36 @@ pub const Cursor = struct {
     /// This effect is achieved using the ambitious column.
     ambitiousColumn: u16 = 0,
 
-    /// An abstraction over the actual `terminal.cursor.setPosition` with an offset.
-    fn setPositionWithOffset(self: Self, offset: Position) !void {
-        try terminal.cursor.setPosition(.{
-            .row = self.position.row + offset.row,
-            .column = self.position.column + offset.column,
-        });
-    }
-
-    /// Returns whether or not the given character is full-width.
-    /// 'Ａ' is a full-width character.
-    /// 'A' is a half-width character.
-    fn isFullWidth(char: u21) !bool {
-        // Most of the time this works pretty well for many languages, including
-        // Japanese (excluding half-width katakana (TODO: handle that?)), Korean, Chinese, and others.
-        return (try unicode.utf8CodepointSequenceLength(char)) >= 3;
-    }
-
-    pub fn draw(self: Self, lines: ArrayList(Line), offset: Position) !void {
-        const current_line_chars = self.getCurrentLine(lines).items;
-
-        // Count all full-width characters from BOL to cursor
-        // so that we can account for them and offset the cursor properly.
+    /// Counts all full-width characters in the string.
+    fn countFullWidthChars(string: []const Char) !u16 {
         var full_width_char_count: u16 = 0;
-        for (current_line_chars) |char, index| {
-            if (index == self.position.column)
-                break;
-            if (try isFullWidth(char))
+        for (string) |char| {
+            if (try editor.isFullWidthChar(char))
                 full_width_char_count += 1;
         }
+        return full_width_char_count;
+    }
 
-        try self.setPositionWithOffset(.{
-            .row = offset.row,
-            .column = offset.column + full_width_char_count,
+    pub fn draw(self: Self, lines: ArrayList(Line), max_line_number_width: u16, wrap_count: u16) !void {
+        // TODO: Cursor positioning doesn't work well if a double width character is the one that causes a wrap to the next line
+        const columns = self.position.column + try countFullWidthChars(self.getCurrentLine(lines).items[0..self.position.column]);
+        const max_line_content_width = terminal.size.width - max_line_number_width;
+        try terminal.cursor.setPosition(Position{
+            .row = self.position.row + wrap_count + columns / max_line_content_width,
+            .column = max_line_number_width + columns % max_line_content_width,
         });
 
         try terminal.control.setBlackOnWhiteBackgroundCellColor();
+
+        const current_line_chars = self.getCurrentLine(lines).items;
         if (self.position.column >= current_line_chars.len) {
             // If there is no character on the cursor, still draw it
             try terminal.writeByte(' ');
         } else {
             // Write the character that's below the cursor
-            var bytes: [4]u8 = undefined;
-            const byte_count = try unicode.utf8Encode(current_line_chars[self.position.column], &bytes);
-            try terminal.write(bytes[0..byte_count]);
+            try terminal.writeChar(current_line_chars[self.position.column]);
         }
+
         try terminal.control.resetForegroundAndBackgroundCellColor();
     }
 

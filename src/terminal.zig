@@ -26,6 +26,13 @@ const writing = struct {
     fn write(bytes: []const u8) !void {
         try writer.writeAll(bytes);
     }
+
+    fn writeChar(char: u21) !void {
+        var bytes: [4]u8 = undefined;
+        const byte_count = try std.unicode.utf8Encode(char, &bytes);
+        try writing.write(bytes[0..byte_count]);
+    }
+
     fn flush() !void {
         try buffered_writer.flush();
     }
@@ -33,6 +40,7 @@ const writing = struct {
 pub const write = writing.write;
 pub const writeByte = writing.writer.writeByte;
 pub const writeByteNTimes = writing.writer.writeByteNTimes;
+pub const writeChar = writing.writeChar;
 pub const print = writing.writer.print;
 pub const flush = writing.flush;
 
@@ -82,7 +90,7 @@ const config = struct {
         setTermios(&current_termios);
         try applyTermios(current_termios);
 
-        // Register a signal handler for the event of the window being resized
+        // Register a signal handler for the event of the terminal being resized
         // so that we can update the size.
         // We could also just update the size every loop iteration but that'd be slower
         // than updating it on demand.
@@ -128,21 +136,27 @@ const OSC = "\x1b]";
 const alert = "\x07";
 
 pub const cursor = struct {
-    pub fn setPosition(position: Position) !void {
-        // This is one-based
-        try print(CSI ++ "{};{}H", .{ position.row + 1, position.column + 1 });
-    }
-
-    /// Moves the cursor to (0, 0).
-    pub fn reset() !void {
-        try write(CSI ++ ";H");
-    }
-
     pub fn show() !void {
         try write(CSI ++ "?25h");
     }
     pub fn hide() !void {
         try write(CSI ++ "?25l");
+    }
+
+    pub fn setPosition(position: Position) !void {
+        // This is one-based
+        try print(CSI ++ "{};{}H", .{ position.row + 1, position.column + 1 });
+    }
+
+    pub fn setToBeginningOfNextLine() !void {
+        // CR for going to BOL and
+        // LF for going to the next line
+        try write("\r\n");
+    }
+
+    /// Moves the cursor to (0, 0).
+    pub fn reset() !void {
+        try write(CSI ++ ";H"); // 215,784 214,976
     }
 };
 
@@ -154,7 +168,7 @@ pub const control = struct {
         try write(CSI ++ "?1049l");
     }
 
-    /// Clears the entire screen.
+    /// Clears the entire terminal.
     pub fn clear() !void {
         try write(CSI ++ "2J");
     }
@@ -167,7 +181,7 @@ pub const control = struct {
         try write(CSI ++ "39;49m");
     }
 
-    /// Sets the background color of the whole screen.
+    /// Sets the background color of the whole terminal.
     ///
     /// `hex_color` is a hexadecimal color that does not start with a number sign.
     pub fn setScreenBackgroundColor(hex_color: []const u8) !void {
@@ -177,7 +191,7 @@ pub const control = struct {
         try write(OSC ++ "111" ++ alert);
     }
 
-    /// Sets the foreground color of the whole screen.
+    /// Sets the foreground color of the whole terminal.
     ///
     /// `hex_color` is a hexadecimal color that does not start with a number sign.
     pub fn setScreenForegroundColor(hex_color: []const u8) !void {
@@ -187,7 +201,7 @@ pub const control = struct {
         try write(OSC ++ "110" ++ alert);
     }
 
-    /// Sets the window's title.
+    /// Sets the terminal's title.
     pub fn setTitle(comptime format: []const u8, args: anytype) !void {
         try print(OSC ++ "0;" ++ format ++ alert, args);
     }

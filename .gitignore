@@ -2,3 +2,4 @@ zig-cache/
 zig-out/
 README.md
 debug-output
+test
