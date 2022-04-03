@@ -46,24 +46,27 @@ pub const Editor = struct {
 
     /// The content to be edited.
     ///
-    /// There is an important performance aspect of separating all the content by lines.
-    /// We frequently do insert operations on the individual `Line`s that take O(n) because
+    /// There is an important performance aspect to separating all the content by lines.
+    /// We frequently do insert operations on the individual `Line`s which take O(n) because
     /// we have to copy and move all data after the insert index.
     /// These operations are very fast in our case because we separate all the content
     /// and so there isn't a lot to copy.
     ///
-    /// But if we instead choose to have all content in one big `Line` and we have a file
+    /// If we instead chose to have all content in one big `Line` and we have a file
     /// of 100,000 lines and we insert a character after the 50,000th character, the operation
     /// will take quite long because all data after that point has to copied and moved
     /// to make space for that one new character.
     ///
     /// In addition, to properly draw the lines, we would have to split up the content into separate lines
     /// on the fly all the time.
+    ///
     /// In our case, we don't have to do any of that.
     lines: ArrayList(Line),
     cursor: Cursor = .{},
+    /// This is used for vertical scrolling.
+    row_offset: u16 = 0,
 
-    /// Sets the window's title that indicates the file that is currently edited.
+    /// Sets the window's title indicating the file that is currently edited.
     fn setTitle(file_name: []const u8) !void {
         try terminal.control.setTitle("{s} - Conversant", .{file_name});
     }
@@ -130,11 +133,18 @@ pub const Editor = struct {
     pub fn run(self: *Self, allocator: mem.Allocator) !void {
         while (true) {
             try self.draw();
+
             if (try self.handleEvents(allocator)) |action| {
                 switch (action) {
                     .exit => break,
                 }
             }
+
+            self.row_offset = std.math.clamp(
+                self.row_offset,
+                self.cursor.position.row -| (terminal.size.height -| 1),
+                self.cursor.position.row,
+            );
         }
     }
 
@@ -149,27 +159,25 @@ pub const Editor = struct {
         try terminal.cursor.reset();
 
         const max_line_number_width = @intCast(u16, std.fmt.count("{}|", .{self.lines.items.len}));
-        const line_number_count = @minimum(terminal.size.height - 1, self.lines.items.len);
+
+        const lines = self.lines.items[self.row_offset..@minimum(self.lines.items.len, @minimum(self.lines.items.len, terminal.size.height) + self.row_offset)];
 
         var wrap_count: u16 = 0;
-        var row: usize = 0;
-        while (row < line_number_count) : (row += 1) {
-            const line_number = row + 1;
-            const line = self.lines.items[row];
-
-            const additional_wrap_count = try drawLine(line_number, max_line_number_width, line);
-            const is_current_line = row < self.cursor.position.row;
-            if (is_current_line)
+        for (lines) |line, row| {
+            const is_last_line = row == lines.len - 1;
+            const additional_wrap_count = try drawLine(row + self.row_offset + 1, max_line_number_width, line, is_last_line);
+            const is_behind_cursor = row < self.cursor.position.row;
+            if (is_behind_cursor)
                 wrap_count += additional_wrap_count;
         }
 
-        try self.cursor.draw(self.lines.items, max_line_number_width, wrap_count);
+        try self.cursor.draw(lines[self.cursor.position.row - self.row_offset].items, max_line_number_width, wrap_count, self.row_offset);
 
         try terminal.flush();
     }
 
     /// Draws a row's line: the line number followed by the line content.
-    fn drawLine(line_number: usize, max_line_number_width: u16, line: Line) !u16 {
+    fn drawLine(line_number: usize, max_line_number_width: u16, line: Line, is_last_line: bool) !u16 {
         try terminal.print(
             "{[0]:>[1]}│",
             .{
@@ -182,7 +190,8 @@ pub const Editor = struct {
         var line_width = max_line_number_width;
         for (line.items) |char| {
             if ((try isFullWidthChar(char)) and line_width + try getCharWidth(char) >= terminal.size.width) {
-                try terminal.cursor.setToBeginningOfNextLine();
+                if (!is_last_line)
+                    try terminal.cursor.setToBeginningOfNextLine();
                 var space_count = max_line_number_width;
                 try terminal.writeByteNTimes(' ', space_count);
                 line_width = space_count;
@@ -202,7 +211,8 @@ pub const Editor = struct {
             }
         }
 
-        try terminal.cursor.setToBeginningOfNextLine();
+        if (!is_last_line)
+            try terminal.cursor.setToBeginningOfNextLine();
 
         return wrap_count;
     }

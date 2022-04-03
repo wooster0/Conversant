@@ -41,13 +41,12 @@ pub const Cursor = struct {
         return full_width_char_count;
     }
 
-    pub fn draw(self: Self, lines: []const Line, max_line_number_width: u16, wrap_count: u16) !void {
+    pub fn draw(self: Self, current_line_chars: []const Char, max_line_number_width: u16, wrap_count: u16,row_offset:u16) !void {
         // TODO: Cursor positioning doesn't work well if a double width character is the one that causes a wrap to the next line
-        const current_line_chars = lines[self.position.row].items;
         const columns = self.position.column + try countFullWidthChars(current_line_chars[0..self.position.column]);
         const max_line_content_width = terminal.size.width - max_line_number_width;
         try terminal.cursor.setPosition(Position{
-            .row = self.position.row + wrap_count + columns / max_line_content_width,
+            .row = (self.position.row -| row_offset) + wrap_count + columns / max_line_content_width,
             .column = max_line_number_width + columns % max_line_content_width,
         });
 

@@ -148,6 +148,9 @@ pub const cursor = struct {
         try print(CSI ++ "{};{}H", .{ position.row + 1, position.column + 1 });
     }
 
+    /// Moves the cursor to the beginning of the next line.
+    ///
+    /// If the cursor is at the last row of the terminal, this causes scrolling.
     pub fn setToBeginningOfNextLine() !void {
         // CR for going to BOL and
         // LF for going to the next line
