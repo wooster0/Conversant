@@ -302,7 +302,7 @@ test "cursor movement" {
         \\world  hello editor
     );
 
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
     try expectEqual(Position{ .row = 1, .column = 0 }, editor.cursor.position);
 
     try input(&editor, .{ .right = .none });
@@ -311,10 +311,10 @@ test "cursor movement" {
     try input(&editor, .{ .end = .none });
     try expectEqual(Position{ .row = 1, .column = 5 }, editor.cursor.position);
 
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
     try expectEqual(Position{ .row = 2, .column = 0 }, editor.cursor.position);
 
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
     try expectEqual(Position{ .row = 3, .column = 5 }, editor.cursor.position);
 
     try input(&editor, .{ .home = .ctrl });
@@ -358,6 +358,39 @@ test "cursor movement" {
     try editor.deinit();
 }
 
+test "movement" {
+    var editor = try getEditor(
+        \\this is a test
+        \\hello editor
+        \\
+        \\こんにちは
+    );
+
+    try input(&editor, .{ .right = .ctrl });
+
+    try input(&editor, .{ .up = .alt });
+    try input(&editor, .{ .down = .alt });
+    try expectEditor(editor,
+        \\hello editor
+        \\this is a test
+        \\
+        \\こんにちは
+    );
+
+    try input(&editor, .{ .down = .alt });
+    try input(&editor, .{ .down = .alt });
+    try input(&editor, .{ .down = .alt });
+    try expectEqual(Position{ .row = 3, .column = 4 }, editor.cursor.position);
+    try expectEditor(editor,
+        \\hello editor
+        \\
+        \\こんにちは
+        \\this is a test
+    );
+
+    try editor.deinit();
+}
+
 test "removal" {
     var editor = try getEditor(
         \\
@@ -379,7 +412,7 @@ test "removal" {
         \\hello editor
     );
 
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
     try input(&editor, .{ .backspace = .none });
     try expectEqual(Position{ .row = 0, .column = 9 }, editor.cursor.position);
     try input(&editor, .{ .backspace = .none });
@@ -400,10 +433,10 @@ test "removal" {
         \\hello editor
     );
 
-    try input(&editor, .down);
-    try input(&editor, .down);
-    try input(&editor, .down);
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
+    try input(&editor, .{ .down = .none });
+    try input(&editor, .{ .down = .none });
+    try input(&editor, .{ .down = .none });
 
     try input(&editor, .{ .backspace = .none });
     try expectEditor(editor,
@@ -429,7 +462,7 @@ test "removal" {
         \\hello editor
     );
 
-    try input(&editor, .up);
+    try input(&editor, .{ .up = .none });
     try input(&editor, .{ .delete = .ctrl });
     try input(&editor, .{ .delete = .ctrl });
     try input(&editor, .{ .delete = .ctrl });
@@ -459,7 +492,7 @@ test "removal" {
         \\我是editor
     );
 
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
     try input(&editor, .{ .right = .none });
     try input(&editor, .{ .right = .none });
     try input(&editor, .{ .backspace = .none });
@@ -492,8 +525,8 @@ test "removal" {
         \\hello editor
     );
 
-    try input(&editor, .down);
-    try input(&editor, .down);
+    try input(&editor, .{ .down = .none });
+    try input(&editor, .{ .down = .none });
     try input(&editor, .{ .end = .none });
     try input(&editor, .{ .delete = .shift });
     try input(&editor, .{ .delete = .shift });
@@ -501,7 +534,6 @@ test "removal" {
     try input(&editor, .{ .delete = .shift });
     try input(&editor, .{ .delete = .shift });
     try input(&editor, .{ .delete = .shift });
-
     try expectEditor(editor,
         \\hello world
         \\hello editor

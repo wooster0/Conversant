@@ -41,7 +41,7 @@ pub const Cursor = struct {
         return full_width_char_count;
     }
 
-    pub fn draw(self: Self, current_line_chars: []const Char, max_line_number_width: u16, wrap_count: u16,row_offset:u16) !void {
+    pub fn draw(self: Self, current_line_chars: []const Char, max_line_number_width: u16, wrap_count: u16, row_offset: u16) !void {
         // TODO: Cursor positioning doesn't work well if a double width character is the one that causes a wrap to the next line
         const columns = self.position.column + try countFullWidthChars(current_line_chars[0..self.position.column]);
         const max_line_content_width = terminal.size.width - max_line_number_width;
@@ -187,24 +187,50 @@ pub const Cursor = struct {
         switch (input) {
             .bytes => |bytes| try self.insertSlice(&lines[self.position.row], bytes),
 
-            .up => {
-                if (self.position.row == 0) {
-                    // We are at BOF
-                    self.position.column = 0;
-                } else {
-                    self.position.row -= 1;
-                    self.tryToReachAmbitiousColumn(lines);
+            .up => |modifier| {
+                switch (modifier) {
+                    .none => {
+                        if (self.position.row == 0) {
+                            // We are at BOF
+                            self.position.column = 0;
+                        } else {
+                            self.position.row -= 1;
+                            self.tryToReachAmbitiousColumn(lines);
+                        }
+                    },
+                    .alt => {
+                        // Swap lines
+                        const current_line_chars = lines[self.position.row];
+                        const upper_line_chars = lines[self.position.row -| 1];
+                        lines[self.position.row] = upper_line_chars;
+                        lines[self.position.row -| 1] = current_line_chars;
+                        self.position.row -|= 1;
+                    },
                 }
             },
-            .down => {
-                if (self.position.row == lines.len - 1) {
-                    // We are at EOF
-                    const last_line_index = @intCast(u16, lines.len - 1);
-                    const last_line = lines[last_line_index];
-                    self.goToEOL(last_line);
-                } else {
-                    self.position.row += 1;
-                    self.tryToReachAmbitiousColumn(lines);
+            .down => |modifier| {
+                switch (modifier) {
+                    .none => {
+                        if (self.position.row == lines.len - 1) {
+                            // We are at EOF
+                            const last_line_index = @intCast(u16, lines.len - 1);
+                            const last_line = lines[last_line_index];
+                            self.goToEOL(last_line);
+                        } else {
+                            self.position.row += 1;
+                            self.tryToReachAmbitiousColumn(lines);
+                        }
+                    },
+                    .alt => {
+                        if (self.position.row != lines.len - 1) {
+                            // Swap lines
+                            const current_line_chars = lines[self.position.row];
+                            const lower_line_chars = lines[self.position.row + 1];
+                            lines[self.position.row] = lower_line_chars;
+                            lines[self.position.row + 1] = current_line_chars;
+                            self.position.row += 1;
+                        }
+                    },
                 }
             },
             .left => |modifier| {

@@ -4,12 +4,17 @@ const assert = std.debug.assert;
 
 const stdin = std.io.getStdIn();
 
-/// This represents a key that was pressed in addition to the `Input`.
+/// A key that was pressed in addition to the `Input`.
+const AltModifier = enum {
+    none,
+    alt,
+};
+/// A key that was pressed in addition to the `Input`.
 const CTRLModifier = enum {
     none,
     ctrl,
 };
-/// This represents a key that was pressed in addition to the `Input`.
+/// A key that was pressed in addition to the `Input`.
 const ShiftCTRLModifier = enum {
     none,
     shift,
@@ -19,8 +24,8 @@ const ShiftCTRLModifier = enum {
 pub const Input = union(enum) {
     bytes: []const u8,
 
-    up,
-    down,
+    up: AltModifier,
+    down: AltModifier,
     left: CTRLModifier,
     right: CTRLModifier,
 
@@ -82,8 +87,8 @@ fn parseInput(buffer: []const u8) Input {
             return switch (buffer[1]) {
                 '[' => {
                     return switch (buffer[2]) {
-                        'A' => .up,
-                        'B' => .down,
+                        'A' => .{ .up = .none },
+                        'B' => .{ .down = .none },
                         'C' => .{ .right = .none },
                         'D' => .{ .left = .none },
                         'F' => .{ .end = .none },
@@ -91,6 +96,13 @@ fn parseInput(buffer: []const u8) Input {
                         '1' => {
                             assert(buffer[3] == ';');
                             switch (buffer[4]) {
+                                '3' => {
+                                    return switch (buffer[5]) {
+                                        'A' => .{ .up = .alt },
+                                        'B' => .{ .down = .alt },
+                                        else => unreachable,
+                                    };
+                                },
                                 '5' => {
                                     return switch (buffer[5]) {
                                         'C' => .{ .right = .ctrl },
