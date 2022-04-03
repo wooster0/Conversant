@@ -163,7 +163,7 @@ pub const Editor = struct {
                 wrap_count += additional_wrap_count;
         }
 
-        try self.cursor.draw(self.lines, max_line_number_width, wrap_count);
+        try self.cursor.draw(self.lines.items, max_line_number_width, wrap_count);
 
         try terminal.flush();
     }
@@ -243,6 +243,7 @@ fn expectEditor(editor: Editor, expected: []const u8) !void {
         }
         try expectEqual(char_index, actual_line.len);
     }
+    try expectEqual(expected_line_index, editor.lines.items.len);
 }
 
 /// Inputs and emulates input to the editor.
@@ -420,9 +421,18 @@ test "removal" {
 
     try input(&editor, .up);
     try input(&editor, .{ .delete = .ctrl });
+    try input(&editor, .{ .delete = .ctrl });
+    try input(&editor, .{ .delete = .ctrl });
     try expectEditor(editor,
         \\hello world
-        \\hello editor
+        \\
+    );
+
+    try input(&editor, .{ .backspace = .ctrl });
+    try input(&editor, .{ .backspace = .ctrl });
+    try input(&editor, .{ .backspace = .ctrl });
+    try expectEditor(editor,
+        \\
     );
 
     try editor.deinit();
@@ -455,6 +465,36 @@ test "removal" {
     try input(&editor, .{ .bytes = "hello" });
     try input(&editor, .{ .delete = .shift });
     try expectEditor(editor,
+        \\
+        \\
+    );
+
+    try editor.deinit();
+
+    editor = try getEditor(
+        \\hello world
+        \\hello editor
+        \\hello world
+        \\
+        \\hello editor hello editor
+        \\hello world hello world
+        \\
+        \\hello editor
+    );
+
+    try input(&editor, .down);
+    try input(&editor, .down);
+    try input(&editor, .{ .end = .none });
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .delete = .shift });
+    try input(&editor, .{ .delete = .shift });
+
+    try expectEditor(editor,
+        \\hello world
+        \\hello editor
         \\
     );
 
