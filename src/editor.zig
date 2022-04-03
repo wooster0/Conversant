@@ -534,9 +534,59 @@ test "removal" {
     try input(&editor, .{ .delete = .shift });
     try input(&editor, .{ .delete = .shift });
     try input(&editor, .{ .delete = .shift });
+    try expectEqual(Position{ .row = 2, .column = 0 }, editor.cursor.position);
     try expectEditor(editor,
         \\hello world
         \\hello editor
+        \\
+    );
+
+    try input(&editor, .{ .backspace = .ctrl });
+    try expectEditor(editor, "hello world\nhello ");
+    try input(&editor, .{ .backspace = .ctrl });
+    try expectEditor(editor, "hello world\n");
+    try input(&editor, .{ .backspace = .ctrl });
+    try expectEditor(editor, "hello ");
+    try input(&editor, .{ .backspace = .ctrl });
+    try input(&editor, .{ .backspace = .none });
+    try expectEditor(editor, "");
+
+    try editor.deinit();
+
+    editor = try getEditor(
+        \\this is a test
+        \\
+        \\
+        \\hello editor
+        \\hello world
+    );
+
+    try input(&editor, .{ .down = .none });
+    try input(&editor, .{ .delete = .ctrl });
+    try input(&editor, .{ .delete = .ctrl });
+    try expectEditor(editor,
+        \\this is a test
+        \\ editor
+        \\hello world
+    );
+
+    try input(&editor, .{ .delete = .ctrl });
+    try expectEditor(editor,
+        \\this is a test
+        \\
+        \\hello world
+    );
+
+    try input(&editor, .{ .delete = .ctrl });
+    try expectEditor(editor,
+        \\this is a test
+        \\ world
+    );
+
+    try input(&editor, .{ .delete = .ctrl });
+    try input(&editor, .{ .delete = .none });
+    try expectEditor(editor,
+        \\this is a test
         \\
     );
 

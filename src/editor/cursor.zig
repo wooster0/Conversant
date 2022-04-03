@@ -327,44 +327,47 @@ pub const Cursor = struct {
                             self.position.column = @intCast(u16, removed_line.items.len);
                         }
                         removed_line.deinit();
-                    }
-                } else {
-                    switch (modifier) {
-                        .none => {
-                            // Remove a single character
-                            _ = lines[self.position.row].orderedRemove(self.getPreviousCharIndex().?);
-                            self.position.column -= 1;
-                        },
-                        .ctrl => {
-                            // Remove a whole word
 
-                            // Go backwards from this point and remove all characters
-                            // until we hit a space or BOL.
-                            var remove_spaces = true;
-                            while (self.getPreviousCharIndex()) |char_to_remove_index| {
-                                const current_line = &lines[self.position.row];
-                                if (current_line.items[char_to_remove_index] == ' ') {
-                                    if (remove_spaces) {
-                                        _ = lines[self.position.row].orderedRemove(char_to_remove_index);
-                                        self.position.column -= 1;
-                                        const space_removed = self.removePreviousSuccessiveSpaces(current_line);
-                                        if (space_removed) {
-                                            break;
-                                        } else {
-                                            continue;
-                                        }
-                                    } else {
+                        if (modifier == .none) return null;
+                    }
+                }
+                switch (modifier) {
+                    .none => {
+                        // Remove a single character
+                        if (self.getPreviousCharIndex()) |char_to_remove_index| {
+                            _ = lines[self.position.row].orderedRemove(char_to_remove_index);
+                            self.position.column -= 1;
+                        }
+                    },
+                    .ctrl => {
+                        // Remove a whole word
+
+                        // Go backwards from this point and remove all characters
+                        // until we hit a space or BOL.
+                        var remove_spaces = true;
+                        while (self.getPreviousCharIndex()) |char_to_remove_index| {
+                            const current_line = &lines[self.position.row];
+                            if (current_line.items[char_to_remove_index] == ' ') {
+                                if (remove_spaces) {
+                                    _ = lines[self.position.row].orderedRemove(char_to_remove_index);
+                                    self.position.column -= 1;
+                                    const space_removed = self.removePreviousSuccessiveSpaces(current_line);
+                                    if (space_removed) {
                                         break;
+                                    } else {
+                                        continue;
                                     }
                                 } else {
-                                    remove_spaces = false;
+                                    break;
                                 }
-
-                                _ = lines[self.position.row].orderedRemove(char_to_remove_index);
-                                self.position.column -= 1;
+                            } else {
+                                remove_spaces = false;
                             }
-                        },
-                    }
+
+                            _ = lines[self.position.row].orderedRemove(char_to_remove_index);
+                            self.position.column -= 1;
+                        }
+                    },
                 }
                 self.setAmbitiousColumn();
             },
@@ -379,22 +382,26 @@ pub const Cursor = struct {
                         // This is our only line so clear it
                         lines[self.position.row].clearRetainingCapacity();
                     }
-                } else if (self.getCurrentCharIndex(lines) == null) {
-                    // We are at EOL and there is no character on the cursor to remove
-                    if (self.position.row != lines.len - 1) { // Not EOF?
-                        // Remove the trailing newline
-                        const removed_line = allocated_lines.orderedRemove(self.position.row + 1);
-                        if (removed_line.items.len != 0) {
-                            const current_line = &lines[self.position.row];
-                            try current_line.appendSlice(removed_line.items);
-                        }
-                        removed_line.deinit();
-                    }
                 } else {
+                    if (self.getCurrentCharIndex(lines) == null) {
+                        // We are at EOL and there is no character on the cursor to remove
+                        if (self.position.row != lines.len - 1) { // Not EOF?
+                            // Remove the trailing newline
+                            const removed_line = allocated_lines.orderedRemove(self.position.row + 1);
+                            if (removed_line.items.len != 0) {
+                                const current_line = &lines[self.position.row];
+                                try current_line.appendSlice(removed_line.items);
+                            }
+                            removed_line.deinit();
+
+                            if (modifier == .none) return null;
+                        }
+                    }
                     switch (modifier) {
                         .none => {
                             // Remove the character the cursor is on
-                            _ = lines[self.position.row].orderedRemove(self.getCurrentCharIndex(lines).?);
+                            if (self.getCurrentCharIndex(lines)) |char_to_remove_index|
+                                _ = lines[self.position.row].orderedRemove(char_to_remove_index);
                         },
                         .shift => unreachable,
                         .ctrl => {
