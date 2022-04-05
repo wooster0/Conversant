@@ -159,14 +159,15 @@ pub const Editor = struct {
         try terminal.control.clear();
         try terminal.cursor.reset();
 
-        const max_line_number_width = @intCast(u16, std.fmt.count("{}|", .{self.lines.items.len}));
+        const lines = self.lines.items[self.row_offset..@minimum(self.lines.items.len, @minimum(self.lines.items.len, terminal.size.height) + self.row_offset)];
+
+        const max_line_number_width = @intCast(u16, std.fmt.count("{}|", .{lines.len + self.row_offset}));
 
         if (terminal.size.width <= max_line_number_width)
             // There are certain limits at which we refuse to draw anything.
             // This happens with absurd window sizes.
             return;
 
-        const lines = self.lines.items[self.row_offset..@minimum(self.lines.items.len, @minimum(self.lines.items.len, terminal.size.height) + self.row_offset)];
         var wrap_count: u16 = 0;
         for (lines) |line, row| {
             const is_last_line = row == lines.len - 1;
