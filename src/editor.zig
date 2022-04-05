@@ -21,8 +21,6 @@ const background = @import("editor/background.zig");
 const terminal = @import("terminal.zig");
 const Position = @import("main.zig").Position;
 
-pub const Action = enum { exit };
-
 /// A Unicode codepoint that, when required, can be decoded to bytes on the fly.
 pub const Char = u21;
 
@@ -131,28 +129,46 @@ pub const Editor = struct {
         self.lines.deinit();
     }
 
+    /// This is where it all happens.
     pub fn run(self: *Self, allocator: mem.Allocator) !void {
         while (true) {
             try self.draw();
-
-            if (try self.handleEvents(allocator)) |action| {
-                switch (action) {
-                    .exit => break,
-                }
-            }
-
-            self.row_offset = std.math.clamp(
-                self.row_offset,
-                self.cursor.position.row -| (terminal.size.height -| 1),
-                self.cursor.position.row,
-            );
+            if (try self.update(allocator))
+                break;
         }
     }
 
-    fn handleEvents(self: *Self, allocator: mem.Allocator) !?Action {
+    /// Updates and returns whether or not to end the loop.
+    fn update(self: *Self, allocator: mem.Allocator) !bool {
+        if (try self.handleEvents(allocator)) |action|
+            switch (action) {
+                .exit => return true,
+            };
+
+        self.row_offset = std.math.clamp(
+            self.row_offset,
+            self.cursor.position.row -| (terminal.size.height -| 1),
+            self.cursor.position.row,
+        );
+
+        return false;
+    }
+
+    fn handleEvents(self: *Self, allocator: mem.Allocator) !?enum { exit } {
         const read_input = (try terminal.read()) orelse return null;
 
-        return self.cursor.handleInput(allocator, &self.lines, read_input);
+        // All input related to moving the cursor and editing using the cursor is handled
+        // by the cursor.
+        const input_status = try self.cursor.handleInput(allocator, &self.lines, read_input);
+
+        if (input_status == .unhandled)
+            // The input wasn't cursor-related
+            switch (read_input) {
+                .ctrl_s => unreachable,
+                .esc => return .exit,
+                else => unreachable,
+            };
+        return null;
     }
 
     fn draw(self: Self) !void {
@@ -266,7 +282,7 @@ fn expectEditor(editor: Editor, expected: []const u8) !void {
 fn input(editor: *Editor, input_to_emulate: terminal.Input) !void {
     const allocator = testing.allocator_instance.allocator();
 
-    try expect((try editor.cursor.handleInput(allocator, &editor.lines, input_to_emulate)) == null);
+    try expect((try editor.cursor.handleInput(allocator, &editor.lines, input_to_emulate)) == .handled);
 }
 
 const expectEqual = testing.expectEqual;

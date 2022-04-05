@@ -182,7 +182,7 @@ pub const Cursor = struct {
         self.setAmbitiousColumn();
     }
 
-    pub fn handleInput(self: *Self, allocator: std.mem.Allocator, allocated_lines: *std.ArrayList(Line), input: terminal.Input) !?editor.Action {
+    pub fn handleInput(self: *Self, allocator: std.mem.Allocator, allocated_lines: *std.ArrayList(Line), input: terminal.Input) !enum { handled, unhandled } {
         const lines = allocated_lines.items;
         switch (input) {
             .bytes => |bytes| try self.insertSlice(&lines[self.position.row], bytes),
@@ -328,7 +328,7 @@ pub const Cursor = struct {
                         }
                         removed_line.deinit();
 
-                        if (modifier == .none) return null;
+                        if (modifier == .none) return .handled;
                     }
                 }
                 switch (modifier) {
@@ -394,7 +394,7 @@ pub const Cursor = struct {
                             }
                             removed_line.deinit();
 
-                            if (modifier == .none) return null;
+                            if (modifier == .none) return .handled;
                         }
                     }
                     switch (modifier) {
@@ -434,9 +434,8 @@ pub const Cursor = struct {
                     }
                 }
             },
-
-            .esc => return .exit,
+            else => return .unhandled,
         }
-        return null;
+        return .handled;
     }
 };

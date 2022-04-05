@@ -40,6 +40,8 @@ pub const Input = union(enum) {
     backspace: CTRLModifier,
     delete: ShiftCTRLModifier,
 
+    ctrl_s,
+
     esc,
 };
 
@@ -152,6 +154,7 @@ fn parseInput(buffer: []const u8) Input {
         0x7F => .{ .backspace = .none },
         0x17 => .{ .backspace = .ctrl },
         0x08 => .{ .backspace = .ctrl }, // For XTerm
+        19 => .ctrl_s,
         else => .{ .bytes = buffer },
     };
 }
