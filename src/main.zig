@@ -9,8 +9,16 @@ const Editor = @import("editor.zig").Editor;
 pub const Position = struct { row: u16, column: u16 };
 pub const Size = struct { width: u16, height: u16 };
 
+pub const app_name = "Conversant";
+
 fn initTerminal() !void {
-    try terminal.init();
+    terminal.init() catch |err| {
+        if (err == error.Unsupported) {
+            try terminal.printError("Please use {s} in a terminal.\n", .{app_name});
+            process.exit(1);
+        }
+        return err;
+    };
     try terminal.control.enableAlternativeScreenBuffer();
 
     // We don't need the inbuilt cursor because there could be

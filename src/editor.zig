@@ -15,6 +15,7 @@ const unicode = std.unicode;
 const math = std.math;
 const heap = std.heap;
 
+const app_name = @import("main.zig").app_name;
 const Cursor = @import("editor/cursor.zig").Cursor;
 const background = @import("editor/background.zig");
 const terminal = @import("terminal.zig");
@@ -68,7 +69,7 @@ pub const Editor = struct {
 
     /// Sets the window's title indicating the file that is currently edited.
     fn setTitle(file_name: []const u8) !void {
-        try terminal.control.setTitle("{s} - Conversant", .{file_name});
+        try terminal.control.setTitle("{s} - {s}", .{ file_name, app_name });
     }
 
     pub fn new(allocator: mem.Allocator) !Self {
@@ -160,8 +161,12 @@ pub const Editor = struct {
 
         const max_line_number_width = @intCast(u16, std.fmt.count("{}|", .{self.lines.items.len}));
 
-        const lines = self.lines.items[self.row_offset..@minimum(self.lines.items.len, @minimum(self.lines.items.len, terminal.size.height) + self.row_offset)];
+        if (terminal.size.width <= max_line_number_width)
+            // There are certain limits at which we refuse to draw anything.
+            // This happens with absurd window sizes.
+            return;
 
+        const lines = self.lines.items[self.row_offset..@minimum(self.lines.items.len, @minimum(self.lines.items.len, terminal.size.height) + self.row_offset)];
         var wrap_count: u16 = 0;
         for (lines) |line, row| {
             const is_last_line = row == lines.len - 1;

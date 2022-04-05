@@ -19,12 +19,15 @@ const Size = @import("main.zig").Size;
 const stdout = io.getStdOut();
 
 const writing = struct {
-    const stdout_writer = stdout.writer();
-    var buffered_writer = (io.BufferedWriter(4096, @TypeOf(stdout_writer)){ .unbuffered_writer = stdout_writer });
-    const writer = buffered_writer.writer();
+    const stderr = io.getStdErr();
+    const unbuffered_stderr_writer = stderr.writer();
+
+    const unbuffered_stdout_writer = stdout.writer();
+    var buffered_stdout_writer_base = io.BufferedWriter(4096, @TypeOf(unbuffered_stdout_writer)){ .unbuffered_writer = unbuffered_stdout_writer };
+    const buffered_stdout_writer = buffered_stdout_writer_base.writer();
 
     fn write(bytes: []const u8) !void {
-        try writer.writeAll(bytes);
+        try buffered_stdout_writer.writeAll(bytes);
     }
 
     fn writeChar(char: u21) !void {
@@ -34,15 +37,22 @@ const writing = struct {
     }
 
     fn flush() !void {
-        try buffered_writer.flush();
+        try buffered_stdout_writer_base.flush();
     }
 };
 pub const write = writing.write;
-pub const writeByte = writing.writer.writeByte;
-pub const writeByteNTimes = writing.writer.writeByteNTimes;
+pub const writeByte = writing.buffered_stdout_writer.writeByte;
+pub const writeByteNTimes = writing.buffered_stdout_writer.writeByteNTimes;
 pub const writeChar = writing.writeChar;
-pub const print = writing.writer.print;
+pub const print = writing.buffered_stdout_writer.print;
 pub const flush = writing.flush;
+
+/// Prints to the standard error output stream.
+///
+/// This provides no buffering (no flushing required) because usually
+/// this stream is only used for error messages and diagnostics and is
+/// not written to very often.
+pub const printError = writing.unbuffered_stderr_writer.print;
 
 /// The size of the terminal in cells.
 pub var size: Size = undefined;
