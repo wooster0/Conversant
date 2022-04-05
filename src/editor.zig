@@ -129,7 +129,7 @@ pub const Editor = struct {
         self.lines.deinit();
     }
 
-    /// This is where it all happens.
+    /// This starts the main loop where drawing and updating of the editor happens.
     pub fn run(self: *Self, allocator: mem.Allocator) !void {
         while (true) {
             try self.draw();

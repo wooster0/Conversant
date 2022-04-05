@@ -52,13 +52,12 @@ pub const Cursor = struct {
 
         try terminal.control.setBlackOnWhiteBackgroundCellColor();
 
-        if (self.position.column >= current_line_chars.len) {
+        if (self.position.column >= current_line_chars.len)
             // If there is no character on the cursor, still draw it
-            try terminal.writeByte(' ');
-        } else {
+            try terminal.writeByte(' ')
+        else
             // Write the character that's below the cursor
             try terminal.writeChar(current_line_chars[self.position.column]);
-        }
 
         try terminal.control.resetForegroundAndBackgroundCellColor();
     }
@@ -77,12 +76,11 @@ pub const Cursor = struct {
     ///
     /// If the cursor is at BOL, this returns `null`.
     fn getPreviousCharIndex(self: Self) ?u16 {
-        if (self.position.column == 0) {
+        if (self.position.column == 0)
             // There is no character before this
-            return null;
-        } else {
+            return null
+        else
             return self.position.column - 1;
-        }
     }
 
     /// Returns the index of the character on the cursor, on the current line.
@@ -90,12 +88,11 @@ pub const Cursor = struct {
     /// If the cursor is at the EOL, this returns `null`.
     fn getCurrentCharIndex(self: Self, lines: []const Line) ?u16 {
         const current_line_chars = lines[self.position.row].items;
-        if (self.position.column == current_line_chars.len) {
+        if (self.position.column == current_line_chars.len)
             // There is no character before this
-            return null;
-        } else {
+            return null
+        else
             return self.position.column;
-        }
     }
 
     /// Removes all consecutive spaces before the cursor
@@ -117,13 +114,12 @@ pub const Cursor = struct {
 
     fn tryToReachAmbitiousColumn(self: *Self, lines: []const Line) void {
         const current_line_len = @intCast(u16, lines[self.position.row].items.len);
-        if (current_line_len < self.ambitiousColumn) {
+        if (current_line_len < self.ambitiousColumn)
             // If the ambitious column is out of reach,
             // at least go to this line's end.
-            self.position.column = current_line_len;
-        } else {
+            self.position.column = current_line_len
+        else
             self.position.column = self.ambitiousColumn;
-        }
     }
 
     fn setAmbitiousColumn(self: *Self) void {
@@ -182,6 +178,7 @@ pub const Cursor = struct {
         self.setAmbitiousColumn();
     }
 
+    /// Attempts to handle the input and returns an enum indicating whether or not it was handled.
     pub fn handleInput(self: *Self, allocator: std.mem.Allocator, allocated_lines: *std.ArrayList(Line), input: terminal.Input) !enum { handled, unhandled } {
         const lines = allocated_lines.items;
         switch (input) {
@@ -352,11 +349,10 @@ pub const Cursor = struct {
                                     _ = lines[self.position.row].orderedRemove(char_to_remove_index);
                                     self.position.column -= 1;
                                     const space_removed = self.removePreviousSuccessiveSpaces(current_line);
-                                    if (space_removed) {
-                                        break;
-                                    } else {
+                                    if (space_removed)
+                                        break
+                                    else
                                         continue;
-                                    }
                                 } else {
                                     break;
                                 }
@@ -416,11 +412,10 @@ pub const Cursor = struct {
                                     if (remove_spaces) {
                                         _ = current_line.orderedRemove(char_to_remove_index);
                                         const space_removed = self.removePreviousSuccessiveSpaces(current_line);
-                                        if (space_removed) {
-                                            break;
-                                        } else {
+                                        if (space_removed)
+                                            break
+                                        else
                                             continue;
-                                        }
                                     } else {
                                         break;
                                     }
