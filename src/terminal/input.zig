@@ -43,42 +43,89 @@ pub const Input = union(enum) {
     ctrl_s,
 
     esc,
+
+    /// An external file descriptor other than the standard input stream that has input to read.
+    readable_file_descriptor: os.fd_t,
 };
 
-var file_descriptors = [_]os.pollfd{os.pollfd{
-    .fd = stdin.handle,
-    .events = os.POLL.IN, // Await input
-    .revents = 0,
-}};
-pub fn read() !?Input {
-    // `std.os.ppoll` will block until there's terminal input or a signal was received.
+// TODO: To implement the stuff below, maybe in the future one could use the
+//       std's event loop and its I/O functionality when it improves and things
+//       like `std.fs.Watch` are available without event-based I/O
+
+/// An extensible set of file descriptors for `poll` to poll from.
+var poll_file_descriptors = [2]os.pollfd{
+    // Standard input stream
+    os.pollfd{
+        .fd = stdin.handle,
+        .events = os.POLL.IN, // Await input
+        .revents = undefined,
+    },
+    undefined,
+};
+var filled_poll_file_descriptor_count: usize = 1;
+
+/// Adds a file descriptor to poll from using `poll`.
+///
+/// This is completely optional but very convenient if you happen to have
+/// other file descriptors you would like to await input from
+/// in addition to the standard input stream.
+pub fn addPollFileDescriptor(file_descriptor: os.fd_t) !void {
+    if (filled_poll_file_descriptor_count == poll_file_descriptors.len)
+        return error.Full;
+
+    poll_file_descriptors[filled_poll_file_descriptor_count] = .{
+        .fd = file_descriptor,
+        .events = std.os.POLL.IN, // Await input
+        .revents = undefined,
+    };
+    filled_poll_file_descriptor_count += 1;
+}
+
+/// Polls for input on the standard input stream and any other file descriptors added using `addPollFileDescriptor`.
+pub fn poll() !?Input {
+    var file_descriptors = poll_file_descriptors[0..filled_poll_file_descriptor_count];
+
+    // This `os.ppoll` will block until any of the file descriptors have input to read
+    // or a signal was received.
+    //
     // We specify no timeout and no signal mask.
+    // The signal mask specifies the signals to block during the poll.
     //
-    // A signal mask specifies the signals to block during this `std.os.ppoll`.
-    //
-    // Having no signal mask means that we will get `std.os.E.INTR` ("interrupt") if any signals
+    // Having no signal mask means that we will get `os.E.INTR` ("interrupt") if any signals
     // are received.
-    // This is important for `std.os.SIG.WINCH` because if we receive it, `terminal.size`
-    // will be updated and we want to stop blocking any potential redraws using the updated
-    // `terminal.size` after this.
+    // This is important for `os.SIG.WINCH` because if we receive it, `terminal.size`
+    // will be updated (in the signal handler registered in `config.init`) and we want to stop blocking
+    // any potential redraws using the updated `terminal.size` after this.
     //
-    // We could make it so that we block all signals except `std.os.SIG.WINCH` by setting the
+    // We could make it so that we block all signals except `os.SIG.WINCH` by setting the
     // signal mask using `sigfillset` and `sigdelset` but we don't have to.
     //
-    // We don't get the same behavior with `std.os.poll`.
+    // We don't get the same behavior with `os.poll`.
     //
-    // For an alternative solution to this, see the comment in `terminal.setTermios`.
-    _ = std.os.ppoll(&file_descriptors, null, null) catch |err| {
-        if (err == std.os.PPollError.SignalInterrupt)
+    // For an alternative solution to this, see the comment in `config.setTermios`.
+    _ = os.ppoll(file_descriptors, null, null) catch |err| {
+        if (err == os.PPollError.SignalInterrupt)
             // Stop blocking
             return null;
         return err;
     };
 
-    // We are ready to read data
-    var buffer: [6]u8 = undefined;
-    var byte_count = try stdin.read(&buffer);
-    return parseInput(buffer[0..byte_count]);
+    for (file_descriptors) |file_descriptor| {
+        if (file_descriptor.revents == os.POLL.IN) {
+            // This file descriptor is ready to be read
+            if (file_descriptor.fd == stdin.handle) {
+                // Read input
+                var buffer: [6]u8 = undefined;
+                var byte_count = try stdin.read(&buffer);
+                return parseInput(buffer[0..byte_count]);
+            } else {
+                // It's an external file descriptor not managed by us so pass it on
+                return Input{ .readable_file_descriptor = file_descriptor.fd };
+            }
+        }
+    }
+
+    unreachable;
 }
 
 fn parseInput(buffer: []const u8) Input {

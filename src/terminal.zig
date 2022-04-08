@@ -9,9 +9,7 @@ const os = std.os;
 const linux = os.linux;
 const fmt = std.fmt;
 
-const input = @import("terminal/input.zig");
-pub const Input = input.Input;
-pub const read = input.read;
+pub const input = @import("terminal/input.zig");
 
 const Position = @import("main.zig").Position;
 const Size = @import("main.zig").Size;

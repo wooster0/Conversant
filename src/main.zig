@@ -35,7 +35,7 @@ fn deinitTerminal() !void {
     try terminal.flush();
 }
 
-pub fn main() anyerror!void {
+pub fn main() !void {
     try initTerminal();
 
     var args = process.args();

@@ -64,8 +64,11 @@ pub const Editor = struct {
     cursor: Cursor = .{},
     /// This is used for vertical scrolling.
     row_offset: u16 = 0,
+    /// The path of the file we're editing.
+    path: ?[:0]const u8,
+    watch: ?Watch,
 
-    /// Sets the window's title indicating the file that is currently edited.
+    /// Sets the terminal's title indicating the file that is currently edited.
     fn setTitle(file_name: []const u8) !void {
         try terminal.control.setTitle("{s} - {s}", .{ file_name, app_name });
     }
@@ -81,12 +84,31 @@ pub const Editor = struct {
         // which is illegal on most systems
         try setTitle("/new file/");
 
-        return Self{ .lines = lines };
+        return Self{ .lines = lines, .path = null, .watch = null };
     }
 
-    pub fn openFile(allocator: mem.Allocator, path: [:0]const u8) !Self {
-        try background.setTimelyBackground();
+    /// This is used to track changes to the currently edited file.
+    const Watch = struct {
+        inotify_file_descriptor: i32,
+        watch_descriptor: i32,
 
+        fn init(path: [:0]const u8) !Watch {
+            const inotify_file_descriptor = try std.os.inotify_init1(0);
+
+            const watch_descriptor = try std.os.inotify_add_watchZ(inotify_file_descriptor, path, std.os.linux.IN.MODIFY);
+
+            try terminal.input.addPollFileDescriptor(inotify_file_descriptor);
+
+            return Watch{ .inotify_file_descriptor = inotify_file_descriptor, .watch_descriptor = watch_descriptor };
+        }
+
+        fn deinit(self: Watch) void {
+            std.os.inotify_rm_watch(self.inotify_file_descriptor, self.watch_descriptor);
+            std.os.close(self.inotify_file_descriptor);
+        }
+    };
+
+    fn readFileLines(allocator: mem.Allocator, path: [:0]const u8) !ArrayList(Line) {
         const file = try fs.cwd().openFileZ(path, .{});
         defer file.close();
 
@@ -117,9 +139,19 @@ pub const Editor = struct {
 
         raw_lines.deinit();
 
+        return lines;
+    }
+
+    pub fn openFile(allocator: mem.Allocator, path: [:0]const u8) !Self {
+        try background.setTimelyBackground();
+
+        const lines = try readFileLines(allocator, path);
+
         try setTitle(path);
 
-        return Self{ .lines = lines };
+        const watch = try Watch.init(path);
+
+        return Self{ .lines = lines, .path = path, .watch = watch };
     }
 
     pub fn deinit(self: *Self) !void {
@@ -127,6 +159,8 @@ pub const Editor = struct {
         for (self.lines.items) |line|
             line.deinit();
         self.lines.deinit();
+        if (self.watch) |watch|
+            watch.deinit();
     }
 
     /// This starts the main loop where drawing and updating of the editor happens.
@@ -155,7 +189,7 @@ pub const Editor = struct {
     }
 
     fn handleEvents(self: *Self, allocator: mem.Allocator) !?enum { exit } {
-        const read_input = (try terminal.read()) orelse return null;
+        const read_input = (try terminal.input.poll()) orelse return null;
 
         // All input related to moving the cursor and editing using the cursor is handled
         // by the cursor.
@@ -166,6 +200,28 @@ pub const Editor = struct {
             switch (read_input) {
                 .ctrl_s => unreachable,
                 .esc => return .exit,
+                .readable_file_descriptor => |file_descriptor| {
+                    // Read a file notification event
+                    var buffer: [4096]u8 align(@alignOf(std.os.linux.inotify_event)) = undefined;
+                    var byte_count = try std.os.read(file_descriptor, &buffer);
+
+                    var index: usize = 0;
+                    while (index < byte_count) {
+                        var inotify_event = @ptrCast(*std.os.linux.inotify_event, @alignCast(@alignOf(std.os.linux.inotify_event), &buffer[index]));
+
+                        index += @sizeOf(std.os.linux.inotify_event) + inotify_event.len;
+
+                        if (inotify_event.mask & std.os.linux.IN.MODIFY != 0) {
+                            // The file has been modified externally, reload it
+                            for (self.lines.items) |line|
+                                line.deinit();
+                            self.lines.deinit();
+                            self.lines = try readFileLines(allocator, self.path.?);
+                        }
+                    }
+
+                    return null;
+                },
                 else => unreachable,
             };
         return null;
@@ -181,7 +237,7 @@ pub const Editor = struct {
 
         if (terminal.size.width <= max_line_number_width)
             // There are certain limits at which we refuse to draw anything.
-            // This happens with absurd window sizes.
+            // This happens with absurd terminal sizes.
             return;
 
         var wrap_count: u16 = 0;

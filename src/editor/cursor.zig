@@ -179,7 +179,7 @@ pub const Cursor = struct {
     }
 
     /// Attempts to handle the input and returns an enum indicating whether or not it was handled.
-    pub fn handleInput(self: *Self, allocator: std.mem.Allocator, allocated_lines: *std.ArrayList(Line), input: terminal.Input) !enum { handled, unhandled } {
+    pub fn handleInput(self: *Self, allocator: std.mem.Allocator, allocated_lines: *std.ArrayList(Line), input: terminal.input.Input) !enum { handled, unhandled } {
         const lines = allocated_lines.items;
         switch (input) {
             .bytes => |bytes| try self.insertSlice(&lines[self.position.row], bytes),
