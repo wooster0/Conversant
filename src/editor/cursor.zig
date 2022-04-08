@@ -66,9 +66,9 @@ pub const Cursor = struct {
     pub fn correctPosition(self: *Self, lines: []const Line) void {
         if (self.position.row > lines.len - 1)
             self.position.row = @intCast(u16, lines.len - 1);
-        const current_line_len = @intCast(u16, lines[self.position.row].items.len);
-        if (self.position.column > current_line_len)
-            self.position.column = current_line_len;
+        const current_line_length = @intCast(u16, lines[self.position.row].items.len);
+        if (self.position.column > current_line_length)
+            self.position.column = current_line_length;
     }
 
     /// Inserts content into a line.
@@ -122,11 +122,11 @@ pub const Cursor = struct {
     }
 
     fn tryToReachAmbitiousColumn(self: *Self, lines: []const Line) void {
-        const current_line_len = @intCast(u16, lines[self.position.row].items.len);
-        if (current_line_len < self.ambitiousColumn)
+        const current_line_length = @intCast(u16, lines[self.position.row].items.len);
+        if (current_line_length < self.ambitiousColumn)
             // If the ambitious column is out of reach,
             // at least go to this line's end.
-            self.position.column = current_line_len
+            self.position.column = current_line_length
         else
             self.position.column = self.ambitiousColumn;
     }

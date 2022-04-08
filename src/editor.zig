@@ -108,40 +108,69 @@ pub const Editor = struct {
     };
 
     fn readFileLines(allocator: mem.Allocator, path: [:0]const u8) !ArrayList(Line) {
+        return readUTF8FileLines(allocator, path) catch |err| {
+            switch (err) {
+                error.Utf8InvalidStartByte,
+                error.EndOfStream,
+                error.Utf8ExpectedContinuation,
+                error.Utf8OverlongEncoding,
+                error.Utf8EncodesSurrogateHalf,
+                error.Utf8CodepointTooLarge,
+                => {
+                    // TODO: open in binary mode
+                    unreachable;
+                },
+                else => return err,
+            }
+        };
+    }
+
+    fn readUTF8FileLines(allocator: mem.Allocator, path: [:0]const u8) !ArrayList(Line) {
         const file = try fs.cwd().openFileZ(path, .{});
         defer file.close();
+
         const file_reader = file.reader();
 
-        var raw_lines = ArrayList(ArrayList(u8)).init(allocator);
-        var new_raw_line = ArrayList(u8).init(allocator);
+        var lines = ArrayList(Line).init(allocator);
+        var line = Line.init(allocator);
         while (true) {
-            const byte = file_reader.readByte() catch |err| {
+            const first_byte = file_reader.readByte() catch |err| {
                 if (err == error.EndOfStream) {
-                    try raw_lines.append(new_raw_line);
+                    try lines.append(line);
                     break;
-                } else return err;
+                }
+                return err;
             };
-
-            if (byte == '\n') {
-                try raw_lines.append(new_raw_line);
-                new_raw_line = ArrayList(u8).init(allocator);
-            } else {
-                try new_raw_line.append(byte);
+            // Find out how many bytes this codepoint takes, read that many bytes,
+            // and then decode the bytes to a Unicode character.
+            const codepoint_length = try unicode.utf8ByteSequenceLength(first_byte);
+            switch (codepoint_length) {
+                // ASCII
+                1 => {
+                    if (first_byte == '\n') {
+                        try lines.append(line);
+                        line = Line.init(allocator);
+                    } else {
+                        try line.append(@as(Char, first_byte));
+                    }
+                },
+                // All others are non-ASCII and if any of these `readByte`s
+                // reach the end of the stream, it means we have invalid UTF-8.
+                2 => {
+                    var bytes = [2]u8{ first_byte, try file_reader.readByte() };
+                    try line.append(try unicode.utf8Decode2(&bytes));
+                },
+                3 => {
+                    var bytes = [3]u8{ first_byte, try file_reader.readByte(), try file_reader.readByte() };
+                    try line.append(try unicode.utf8Decode3(&bytes));
+                },
+                4 => {
+                    var bytes = [4]u8{ first_byte, try file_reader.readByte(), try file_reader.readByte(), try file_reader.readByte() };
+                    try line.append(try unicode.utf8Decode4(&bytes));
+                },
+                else => unreachable,
             }
         }
-
-        // Now properly process all bytes by codepoint
-        var lines = try ArrayList(Line).initCapacity(allocator, raw_lines.items.len);
-        for (raw_lines.items) |raw_line| {
-            var line = Line.init(allocator);
-            var utf8_iterator = unicode.Utf8Iterator{ .bytes = raw_line.items, .i = 0 };
-            while (utf8_iterator.nextCodepoint()) |char|
-                try line.append(char);
-            lines.appendAssumeCapacity(line);
-        }
-
-        raw_lines.deinit();
-
         return lines;
     }
 
@@ -677,7 +706,12 @@ test "removal" {
 
 test "Unicode" {
     const content =
-        \\𒀀𒀁𒀂𒀃𒀄𒀅𒀆𒀇𒀈𒀉𒀊𒀋𒀌𒀍𒀎𒀏
+        \\𒀀𒀁𒀂𒀃𒀄𒀅𒀆𒀇
+        \\hello world
+        \\𒀈
+        \\hello editor
+        \\𒀉𒀊𒀋𒀌𒀍𒀎𒀏
+        \\
         \\このエディターはUnicodeに対応している。
         \\åäöÅÄÖ
     ;
@@ -685,5 +719,18 @@ test "Unicode" {
     var editor = try getEditor(content);
     try expectEditor(editor, content);
 
+    const allocator = testing.allocator_instance.allocator();
+
+    try fs.cwd().writeFile("unicode-test", content);
+
+    const lines = try Editor.readFileLines(allocator, "unicode-test");
+    for (lines.items) |line, index|
+        try expect(mem.eql(Char, line.items, editor.lines.items[index].items));
+
+    for (lines.items) |line|
+        line.deinit();
+    lines.deinit();
+
+    try fs.cwd().deleteFile("unicode-test");
     try editor.deinit();
 }
