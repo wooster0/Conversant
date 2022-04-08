@@ -12,7 +12,6 @@ const ArrayList = std.ArrayList;
 const mem = std.mem;
 const fs = std.fs;
 const unicode = std.unicode;
-const math = std.math;
 const heap = std.heap;
 
 const app_name = @import("main.zig").app_name;
@@ -95,7 +94,7 @@ pub const Editor = struct {
         fn init(path: [:0]const u8) !Watch {
             const inotify_file_descriptor = try std.os.inotify_init1(0);
 
-            const watch_descriptor = try std.os.inotify_add_watchZ(inotify_file_descriptor, path, std.os.linux.IN.MODIFY);
+            const watch_descriptor = try std.os.inotify_add_watchZ(inotify_file_descriptor, path, std.os.linux.IN.CLOSE_WRITE);
 
             try terminal.input.addPollFileDescriptor(inotify_file_descriptor);
 
@@ -111,19 +110,23 @@ pub const Editor = struct {
     fn readFileLines(allocator: mem.Allocator, path: [:0]const u8) !ArrayList(Line) {
         const file = try fs.cwd().openFileZ(path, .{});
         defer file.close();
+        const file_reader = file.reader();
 
         var raw_lines = ArrayList(ArrayList(u8)).init(allocator);
+        var new_raw_line = ArrayList(u8).init(allocator);
         while (true) {
-            var raw_line = ArrayList(u8).init(allocator);
-            if (file.reader().readUntilDelimiterArrayList(&raw_line, '\n', math.maxInt(usize))) { // TODO: eliminate the internal max_size check
-                try raw_lines.append(raw_line);
-            } else |err| {
+            const byte = file_reader.readByte() catch |err| {
                 if (err == error.EndOfStream) {
-                    try raw_lines.append(raw_line);
+                    try raw_lines.append(new_raw_line);
                     break;
-                } else {
-                    return err;
-                }
+                } else return err;
+            };
+
+            if (byte == '\n') {
+                try raw_lines.append(new_raw_line);
+                new_raw_line = ArrayList(u8).init(allocator);
+            } else {
+                try new_raw_line.append(byte);
             }
         }
 
@@ -189,11 +192,11 @@ pub const Editor = struct {
     }
 
     fn handleEvents(self: *Self, allocator: mem.Allocator) !?enum { exit } {
-        const read_input = (try terminal.input.poll()) orelse return null;
+        const polled_input = (try terminal.input.poll()) orelse return null;
 
         // All input related to moving the cursor and editing using the cursor is handled
         // by the cursor.
-        const input_status = try self.cursor.handleInput(allocator, &self.lines, read_input);
+        const input_status = try self.cursor.handleInput(allocator, &self.lines, polled_input);
 
         if (input_status == .unhandled)
             // The input wasn't cursor-related
@@ -211,12 +214,13 @@ pub const Editor = struct {
 
                         index += @sizeOf(std.os.linux.inotify_event) + inotify_event.len;
 
-                        if (inotify_event.mask & std.os.linux.IN.MODIFY != 0) {
+                        if (inotify_event.mask & std.os.linux.IN.CLOSE_WRITE != 0) {
                             // The file has been modified externally, reload it
                             for (self.lines.items) |line|
                                 line.deinit();
                             self.lines.deinit();
                             self.lines = try readFileLines(allocator, self.path.?);
+                            self.cursor.correctPosition(self.lines.items);
                         }
                     }
 
@@ -311,7 +315,7 @@ fn getEditor(content: []const u8) !Editor {
         try lines.append(allocatedLine);
     }
 
-    return Editor{ .lines = lines };
+    return Editor{ .lines = lines, .path = null, .watch = null };
 }
 
 const expect = testing.expect;
@@ -335,7 +339,7 @@ fn expectEditor(editor: Editor, expected: []const u8) !void {
 }
 
 /// Inputs and emulates input to the editor.
-fn input(editor: *Editor, input_to_emulate: terminal.Input) !void {
+fn input(editor: *Editor, input_to_emulate: terminal.input.Input) !void {
     const allocator = testing.allocator_instance.allocator();
 
     try expect((try editor.cursor.handleInput(allocator, &editor.lines, input_to_emulate)) == .handled);
@@ -667,6 +671,19 @@ test "removal" {
         \\this is a test
         \\
     );
+
+    try editor.deinit();
+}
+
+test "Unicode" {
+    const content =
+        \\𒀀𒀁𒀂𒀃𒀄𒀅𒀆𒀇𒀈𒀉𒀊𒀋𒀌𒀍𒀎𒀏
+        \\このエディターはUnicodeに対応している。
+        \\åäöÅÄÖ
+    ;
+
+    var editor = try getEditor(content);
+    try expectEditor(editor, content);
 
     try editor.deinit();
 }

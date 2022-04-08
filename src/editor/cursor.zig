@@ -62,6 +62,15 @@ pub const Cursor = struct {
         try terminal.control.resetForegroundAndBackgroundCellColor();
     }
 
+    /// Corrects the cursor's position if it is at an invalid position.
+    pub fn correctPosition(self: *Self, lines: []const Line) void {
+        if (self.position.row > lines.len - 1)
+            self.position.row = @intCast(u16, lines.len - 1);
+        const current_line_len = @intCast(u16, lines[self.position.row].items.len);
+        if (self.position.column > current_line_len)
+            self.position.column = current_line_len;
+    }
+
     /// Inserts content into a line.
     fn insertSlice(self: *Self, line: *Line, bytes: []const u8) !void {
         var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
