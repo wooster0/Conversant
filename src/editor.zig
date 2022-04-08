@@ -29,14 +29,15 @@ pub const Line = ArrayList(Char);
 /// 'Ａ' is a full-width character.
 /// 'A' is a half-width character.
 pub fn isFullWidthChar(char: Char) !bool {
-    // Most of the time this works pretty well for many languages, including
-    // Japanese (excluding half-width katakana (TODO: handle that?)), Korean, Chinese, and others.
-    return (try unicode.utf8CodepointSequenceLength(char)) >= 3;
-}
-
-/// Returns a character's width in columns.
-fn getCharWidth(char: Char) !u16 {
-    return if (try isFullWidthChar(char)) 2 else 1;
+    switch (char) {
+        0xFF60...0xFF9F => return false, // Half-width katakana
+        else => {
+            // Most of the time this check works pretty well for many if not most languages,
+            // including Japanese (excluding half-width katakana which is handled above),
+            // Korean, Chinese, European languages etc.
+            return (try unicode.utf8CodepointSequenceLength(char)) >= 3;
+        },
+    }
 }
 
 pub const Editor = struct {
@@ -300,7 +301,8 @@ pub const Editor = struct {
         var wrap_count: u16 = 0;
         var line_width = max_line_number_width;
         for (line.items) |char| {
-            if ((try isFullWidthChar(char)) and line_width + try getCharWidth(char) >= terminal.size.width) {
+            const char_width: u16 = if (try isFullWidthChar(char)) 2 else 1;
+            if ((try isFullWidthChar(char)) and line_width + char_width >= terminal.size.width) {
                 if (!is_last_line)
                     try terminal.cursor.setToBeginningOfNextLine();
                 var space_count = max_line_number_width;
@@ -311,7 +313,7 @@ pub const Editor = struct {
             }
 
             try terminal.writeChar(char);
-            line_width += try getCharWidth(char);
+            line_width += char_width;
 
             if (line_width >= terminal.size.width) {
                 var space_count = max_line_number_width;
@@ -733,4 +735,21 @@ test "Unicode" {
 
     try fs.cwd().deleteFile("unicode-test");
     try editor.deinit();
+
+    try expectEqual(false, try isFullWidthChar('A'));
+    try expectEqual(true, try isFullWidthChar('あ'));
+    try expectEqual(false, try isFullWidthChar('Z'));
+    try expectEqual(true, try isFullWidthChar('〜'));
+    try expectEqual(false, try isFullWidthChar('#'));
+    try expectEqual(true, try isFullWidthChar('字'));
+    try expectEqual(false, try isFullWidthChar('Å'));
+    try expectEqual(true, try isFullWidthChar('𒀇'));
+    try expectEqual(false, try isFullWidthChar('ｱ'));
+    try expectEqual(true, try isFullWidthChar('𒀈'));
+    try expectEqual(false, try isFullWidthChar('｡'));
+    try expectEqual(true, try isFullWidthChar('Ａ'));
+    try expectEqual(false, try isFullWidthChar('ﾟ'));
+    try expectEqual(true, try isFullWidthChar('ㄱ'));
+    try expectEqual(false, try isFullWidthChar(' '));
+    try expectEqual(true, try isFullWidthChar('차'));
 }
