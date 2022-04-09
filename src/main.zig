@@ -65,8 +65,8 @@ pub fn debug(comptime format: []const u8, args: anytype) void {
     if (@import("builtin").mode != .Debug)
         @compileError("this function can only be used in debug mode");
 
-    const file = std.fs.cwd().createFile("debug-output", .{ .truncate = false }) catch return;
+    const file = std.fs.cwd().createFile("debug-output", .{ .truncate = false }) catch unreachable;
     defer file.close();
-    file.seekFromEnd(0) catch return;
-    file.writer().print(format ++ "\n", args) catch return;
+    file.seekFromEnd(0) catch unreachable;
+    file.writer().print(format ++ "\n", args) catch unreachable;
 }
