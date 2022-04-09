@@ -10,12 +10,12 @@ const AltModifier = enum {
     alt,
 };
 /// A key that was pressed in addition to the `Input`.
-const CTRLModifier = enum {
+const CtrlModifier = enum {
     none,
     ctrl,
 };
 /// A key that was pressed in addition to the `Input`.
-const ShiftCTRLModifier = enum {
+const ShiftCtrlModifier = enum {
     none,
     shift,
     ctrl,
@@ -26,19 +26,19 @@ pub const Input = union(enum) {
 
     up: AltModifier,
     down: AltModifier,
-    left: CTRLModifier,
-    right: CTRLModifier,
+    left: CtrlModifier,
+    right: CtrlModifier,
 
-    home: CTRLModifier,
-    end: CTRLModifier,
+    home: CtrlModifier,
+    end: CtrlModifier,
     page_up, // TODO: implement the modifiers
     page_down, // TODO: implement the modifiers
 
     enter, // It seems this has no modifiers in many if not most terminals
     tab,
 
-    backspace: CTRLModifier,
-    delete: ShiftCTRLModifier,
+    backspace: CtrlModifier,
+    delete: ShiftCtrlModifier,
 
     ctrl_s,
 
@@ -115,9 +115,9 @@ pub fn poll() !?Input {
             // This file descriptor is ready to be read
             if (file_descriptor.fd == stdin.handle) {
                 // Read input
-                var buffer: [6]u8 = undefined;
-                var byte_count = try stdin.read(&buffer);
-                return parseInput(buffer[0..byte_count]);
+                var bytes: [6]u8 = undefined;
+                var byte_count = try stdin.read(&bytes);
+                return parseInput(bytes[0..byte_count]);
             } else {
                 // It's an external file descriptor not managed by us so pass it on
                 return Input{ .readable_file_descriptor = file_descriptor.fd };
