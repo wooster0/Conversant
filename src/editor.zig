@@ -43,7 +43,7 @@ pub fn isFullWidthChar(char: Char) !bool {
 pub const Editor = struct {
     const Self = @This();
 
-    /// The content to be edited.
+    /// The content to edit.
     ///
     /// There is an important performance aspect to separating all the content by lines.
     /// We frequently do insert operations on the individual `Line`s which take O(n) because
@@ -64,11 +64,18 @@ pub const Editor = struct {
     cursor: Cursor = .{},
     /// This is used for vertical scrolling.
     row_offset: u16 = 0,
-    /// The path of the file we're editing.
-    path: ?[:0]const u8,
+    /// The opened file to load content from and save content to.
+    file: ?struct {
+        handle: fs.File,
+        path: [:0]const u8,
+
+        fn deinit(self: @This()) void {
+            self.handle.close();
+        }
+    },
     watch: ?Watch,
 
-    /// Sets the terminal's title indicating the file that is currently edited.
+    /// Sets the terminal's title indicating the file that is edited.
     fn setTitle(file_name: []const u8) !void {
         try terminal.control.setTitle("{s} - {s}", .{ file_name, app_name });
     }
@@ -84,7 +91,7 @@ pub const Editor = struct {
         // which is illegal on most systems
         try setTitle("/new file/");
 
-        return Self{ .lines = lines, .path = null, .watch = null };
+        return Self{ .lines = lines, .file = null, .watch = null };
     }
 
     /// This is used to track changes to the currently edited file.
@@ -108,8 +115,8 @@ pub const Editor = struct {
         }
     };
 
-    fn readFileLines(allocator: mem.Allocator, path: [:0]const u8) !ArrayList(Line) {
-        return readUTF8FileLines(allocator, path) catch |err| {
+    fn readLines(allocator: mem.Allocator, reader: anytype) !ArrayList(Line) {
+        return readUtf8Lines(allocator, reader) catch |err| {
             switch (err) {
                 error.Utf8InvalidStartByte,
                 error.EndOfStream,
@@ -126,16 +133,11 @@ pub const Editor = struct {
         };
     }
 
-    fn readUTF8FileLines(allocator: mem.Allocator, path: [:0]const u8) !ArrayList(Line) {
-        const file = try fs.cwd().openFileZ(path, .{});
-        defer file.close();
-
-        const file_reader = file.reader();
-
+    fn readUtf8Lines(allocator: mem.Allocator, reader: anytype) !ArrayList(Line) {
         var lines = ArrayList(Line).init(allocator);
         var line = Line.init(allocator);
         while (true) {
-            const first_byte = file_reader.readByte() catch |err| {
+            const first_byte = reader.readByte() catch |err| {
                 if (err == error.EndOfStream) {
                     try lines.append(line);
                     break;
@@ -158,15 +160,15 @@ pub const Editor = struct {
                 // All others are non-ASCII and if any of these `readByte`s
                 // reach the end of the stream, it means we have invalid UTF-8.
                 2 => {
-                    var bytes = [2]u8{ first_byte, try file_reader.readByte() };
+                    var bytes = [2]u8{ first_byte, try reader.readByte() };
                     try line.append(try unicode.utf8Decode2(&bytes));
                 },
                 3 => {
-                    var bytes = [3]u8{ first_byte, try file_reader.readByte(), try file_reader.readByte() };
+                    var bytes = [3]u8{ first_byte, try reader.readByte(), try reader.readByte() };
                     try line.append(try unicode.utf8Decode3(&bytes));
                 },
                 4 => {
-                    var bytes = [4]u8{ first_byte, try file_reader.readByte(), try file_reader.readByte(), try file_reader.readByte() };
+                    var bytes = [4]u8{ first_byte, try reader.readByte(), try reader.readByte(), try reader.readByte() };
                     try line.append(try unicode.utf8Decode4(&bytes));
                 },
                 else => unreachable,
@@ -178,13 +180,23 @@ pub const Editor = struct {
     pub fn openFile(allocator: mem.Allocator, path: [:0]const u8) !Self {
         try background.setTimelyBackground();
 
-        const lines = try readFileLines(allocator, path);
-
         try setTitle(path);
+
+        const file_handle = try fs.cwd().openFileZ(path, .{ .read = true, .write = true });
+
+        const file_handle_reader = file_handle.reader();
+        const lines = try readLines(allocator, file_handle_reader);
 
         const watch = try Watch.init(path);
 
-        return Self{ .lines = lines, .path = path, .watch = watch };
+        return Self{
+            .lines = lines,
+            .file = .{
+                .handle = file_handle,
+                .path = path,
+            },
+            .watch = watch,
+        };
     }
 
     pub fn deinit(self: *Self) !void {
@@ -194,6 +206,8 @@ pub const Editor = struct {
         self.lines.deinit();
         if (self.watch) |watch|
             watch.deinit();
+        if (self.file) |file|
+            file.deinit();
     }
 
     /// This starts the main loop where drawing and updating of the editor happens.
@@ -230,8 +244,31 @@ pub const Editor = struct {
 
         if (input_status == .unhandled)
             // The input wasn't cursor-related
-            switch (read_input) {
-                .ctrl_s => unreachable,
+            switch (polled_input) {
+                .ctrl_s => {
+                    if (self.file) |file| {
+                        // Clear the file
+                        try file.handle.setEndPos(0);
+                        // We still need to reposition the file cursor manually
+                        try file.handle.seekTo(0);
+
+                        var bytes: [4]u8 = undefined;
+                        for (self.lines.items) |line| {
+                            for (line.items) |char| {
+                                // We verified that we are dealing with
+                                // valid UTF-8 when we loaded the content
+                                const byte_count = unicode.utf8Encode(char, &bytes) catch unreachable;
+
+                                try file.handle.writeAll(bytes[0..byte_count]);
+                            }
+                            try file.handle.writeAll("\n");
+                        }
+                        // TODO: https://github.com/ziglang/zig/pull/11410
+                        try std.os.fsync(file.handle.handle);
+                    } else {
+                        // TODO: create it
+                    }
+                },
                 .esc => return .exit,
                 .readable_file_descriptor => |file_descriptor| {
                     // Read a file notification event
@@ -246,10 +283,16 @@ pub const Editor = struct {
 
                         if (inotify_event.mask & std.os.linux.IN.CLOSE_WRITE != 0) {
                             // The file has been modified externally, reload it
+
+                            // TODO: reuse the allocated memory
                             for (self.lines.items) |line|
                                 line.deinit();
                             self.lines.deinit();
-                            self.lines = try readFileLines(allocator, self.path.?);
+
+                            try self.file.?.handle.seekTo(0);
+                            const file_reader = self.file.?.handle.reader();
+                            self.lines = try readLines(allocator, file_reader);
+
                             self.cursor.correctPosition(self.lines.items);
                         }
                     }
@@ -346,7 +389,7 @@ fn getEditor(content: []const u8) !Editor {
         try lines.append(allocatedLine);
     }
 
-    return Editor{ .lines = lines, .path = null, .watch = null };
+    return Editor{ .lines = lines, .file = null, .watch = null };
 }
 
 const expect = testing.expect;
@@ -723,9 +766,8 @@ test "Unicode" {
 
     const allocator = testing.allocator_instance.allocator();
 
-    try fs.cwd().writeFile("unicode-test", content);
-
-    const lines = try Editor.readFileLines(allocator, "unicode-test");
+    const content_reader = std.io.fixedBufferStream(content).reader();
+    const lines = try Editor.readLines(allocator, content_reader);
     for (lines.items) |line, index|
         try expect(mem.eql(Char, line.items, editor.lines.items[index].items));
 
@@ -733,7 +775,6 @@ test "Unicode" {
         line.deinit();
     lines.deinit();
 
-    try fs.cwd().deleteFile("unicode-test");
     try editor.deinit();
 
     try expectEqual(false, try isFullWidthChar('A'));
