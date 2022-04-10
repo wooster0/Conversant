@@ -1,6 +1,9 @@
 //! This abstracts everything related to the terminal and provides everything needed for
 //! display, manipulation, and input events.
 //!
+//! This library is not intended for parallel or multi-threaded usage.
+//! It is recommended to be used in a synchronized fashion.
+//!
 //! One great reference for this is <https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>.
 
 const std = @import("std");

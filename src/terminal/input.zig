@@ -1,6 +1,6 @@
 const std = @import("std");
 const os = std.os;
-const assert = std.debug.assert;
+const debug = std.debug;
 
 const stdin = std.io.getStdIn();
 
@@ -22,6 +22,12 @@ const ShiftCtrlModifier = enum {
 };
 
 pub const Input = union(enum) {
+    /// This is usually an input like a single keypress
+    /// or in the case of an IME it could be multiple bytes
+    /// making up that character.
+    ///
+    /// Although not guaranteed, these are usually
+    /// up to 4 bytes of a UTF-8 character.
     bytes: []const u8,
 
     up: AltModifier,
@@ -75,11 +81,14 @@ pub fn addPollFileDescriptor(file_descriptor: os.fd_t) !void {
 
     poll_file_descriptors[filled_poll_file_descriptor_count] = .{
         .fd = file_descriptor,
-        .events = std.os.POLL.IN, // Await input
+        .events = os.POLL.IN, // Await input
         .revents = undefined,
     };
     filled_poll_file_descriptor_count += 1;
 }
+
+/// This is used for reading input from the terminal.
+var input_buffer: [6]u8 = undefined;
 
 /// Polls for input on the standard input stream and any other file descriptors added using `addPollFileDescriptor`.
 pub fn poll() !?Input {
@@ -114,10 +123,9 @@ pub fn poll() !?Input {
         if (file_descriptor.revents == os.POLL.IN) {
             // This file descriptor is ready to be read
             if (file_descriptor.fd == stdin.handle) {
-                // Read input
-                var bytes: [6]u8 = undefined;
-                var byte_count = try stdin.read(&bytes);
-                return parseInput(bytes[0..byte_count]);
+                // Read terminal input
+                const byte_count = try stdin.read(&input_buffer);
+                return parseInput(input_buffer[0..byte_count]);
             } else {
                 // It's an external file descriptor not managed by us so pass it on
                 return Input{ .readable_file_descriptor = file_descriptor.fd };
@@ -129,79 +137,90 @@ pub fn poll() !?Input {
 }
 
 fn parseInput(buffer: []const u8) Input {
-    return switch (buffer[0]) {
+    switch (buffer[0]) {
         '\x1b' => {
             if (buffer.len == 1)
                 return .esc;
-            return switch (buffer[1]) {
+            switch (buffer[1]) {
                 '[' => {
-                    return switch (buffer[2]) {
-                        'A' => .{ .up = .none },
-                        'B' => .{ .down = .none },
-                        'C' => .{ .right = .none },
-                        'D' => .{ .left = .none },
-                        'F' => .{ .end = .none },
-                        'H' => .{ .home = .none },
+                    switch (buffer[2]) {
+                        'A' => return .{ .up = .none },
+                        'B' => return .{ .down = .none },
+                        'C' => return .{ .right = .none },
+                        'D' => return .{ .left = .none },
+                        'F' => return .{ .end = .none },
+                        'H' => return .{ .home = .none },
                         '1' => {
-                            assert(buffer[3] == ';');
+                            debug.assert(buffer[3] == ';');
                             switch (buffer[4]) {
                                 '3' => {
-                                    return switch (buffer[5]) {
-                                        'A' => .{ .up = .alt },
-                                        'B' => .{ .down = .alt },
-                                        else => unreachable,
-                                    };
+                                    switch (buffer[5]) {
+                                        'A' => return .{ .up = .alt },
+                                        'B' => return .{ .down = .alt },
+                                        else => {},
+                                    }
                                 },
                                 '5' => {
-                                    return switch (buffer[5]) {
-                                        'C' => .{ .right = .ctrl },
-                                        'D' => .{ .left = .ctrl },
-                                        'F' => .{ .end = .ctrl },
-                                        'H' => .{ .home = .ctrl },
-                                        else => unreachable,
-                                    };
+                                    switch (buffer[5]) {
+                                        'C' => return .{ .right = .ctrl },
+                                        'D' => return .{ .left = .ctrl },
+                                        'F' => return .{ .end = .ctrl },
+                                        'H' => return .{ .home = .ctrl },
+                                        else => {},
+                                    }
                                 },
-                                else => unreachable,
+                                else => {},
                             }
                         },
                         '3' => {
-                            return switch (buffer[3]) {
-                                '~' => .{ .delete = .none },
+                            switch (buffer[3]) {
+                                '~' => return .{ .delete = .none },
                                 ';' => {
-                                    return switch (buffer[4]) {
+                                    switch (buffer[4]) {
                                         '5' => {
                                             // For XTerm
-                                            assert(buffer[5] == '~');
+                                            debug.assert(buffer[5] == '~');
                                             return .{ .delete = .ctrl };
                                         },
-                                        '2' => .{ .delete = .shift },
-                                        else => unreachable,
-                                    };
+                                        '2' => return .{ .delete = .shift },
+                                        else => {},
+                                    }
                                 },
-                                else => unreachable,
-                            };
+                                else => {},
+                            }
                         },
                         '5' => {
-                            assert(buffer[3] == '~');
+                            debug.assert(buffer[3] == '~');
                             return .page_up;
                         },
                         '6' => {
-                            assert(buffer[3] == '~');
+                            debug.assert(buffer[3] == '~');
                             return .page_down;
                         },
-                        else => unreachable,
-                    };
+                        else => {},
+                    }
                 },
-                'd' => .{ .delete = .ctrl },
-                else => unreachable,
-            };
+                'd' => return .{ .delete = .ctrl },
+                else => {},
+            }
         },
-        '\r' => .enter,
-        '\t' => .tab,
-        0x7F => .{ .backspace = .none },
-        0x17 => .{ .backspace = .ctrl },
-        0x08 => .{ .backspace = .ctrl }, // For XTerm
-        19 => .ctrl_s,
-        else => .{ .bytes = buffer },
-    };
+        '\r' => return .enter,
+        '\t' => return .tab,
+        0x7F => return .{ .backspace = .none },
+        0x17 => return .{ .backspace = .ctrl },
+        0x08 => return .{ .backspace = .ctrl }, // For XTerm
+        19 => return .ctrl_s,
+        else => {},
+    }
+
+    if (@import("builtin").mode == .Debug) {
+        debug.assert(buffer.len >= 1 and buffer.len <= 4);
+        const valid_utf8 = std.unicode.utf8ValidateSlice(buffer);
+        if (!valid_utf8)
+            debug.panic("failed to parse unknown and non-UTF-8 input: {any}", .{buffer});
+    }
+
+    // Here we assume a UTF-8 character but still pass the bytes
+    // as-is without verification to avoid overhead
+    return .{ .bytes = buffer };
 }
