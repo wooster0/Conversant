@@ -6,7 +6,7 @@ const terminal = @import("terminal.zig");
 const Editor = @import("editor.zig").Editor;
 
 // From what I've seen, 16 bit generally serves as the maximum cell range in many if not most terminals
-pub const Position = struct { row: u16, column: u16 };
+pub const Position = struct { row: u16 = 0, column: u16 = 0 };
 pub const Size = struct { width: u16, height: u16 };
 
 pub const app_name = "Conversant";

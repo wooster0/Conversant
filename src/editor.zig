@@ -246,6 +246,10 @@ pub const Editor = struct {
             // The input wasn't cursor-related
             switch (polled_input) {
                 .ctrl_s => {
+                    // Save the contents to disk.
+                    // For the writing process we won't do any manual buffering but instead rely
+                    // on the system to cache the data we write and then actually synchronize it
+                    // with the filesystem by flushing.
                     if (self.file) |file| {
                         // Clear the file
                         try file.handle.setEndPos(0);
@@ -263,6 +267,9 @@ pub const Editor = struct {
                             }
                             try file.handle.writeAll("\n");
                         }
+
+                        // And now make sure all contents possibly still in memory are
+                        // flushed and stored to disk.
                         // TODO: https://github.com/ziglang/zig/pull/11410
                         try std.os.fsync(file.handle.handle);
                     } else {
@@ -343,7 +350,9 @@ pub const Editor = struct {
 
         var wrap_count: u16 = 0;
         var line_width = max_line_number_width;
-        for (line.items) |char| {
+        var index: usize = 0;
+        while (index < line.items.len) : (index += 1) {
+            const char = line.items[index];
             const char_width: u16 = if (try isFullWidthChar(char)) 2 else 1;
             if ((try isFullWidthChar(char)) and line_width + char_width >= terminal.size.width) {
                 if (!is_last_line)
@@ -355,8 +364,15 @@ pub const Editor = struct {
                 wrap_count += 1;
             }
 
-            try terminal.writeChar(char);
-            line_width += char_width;
+            // A little ligature experiment
+            if (char == '!' and line.items.len - 1 > index and line.items[index + 1] == '=') {
+                try terminal.write("≠");
+                index += 1;
+                line_width += 2;
+            } else {
+                try terminal.writeChar(char);
+                line_width += char_width;
+            }
 
             if (line_width >= terminal.size.width) {
                 var space_count = max_line_number_width;

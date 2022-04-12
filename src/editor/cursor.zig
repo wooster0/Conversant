@@ -9,7 +9,7 @@ const Line = editor.Line;
 pub const Cursor = struct {
     const Self = @This();
 
-    position: Position = .{ .row = 0, .column = 0 },
+    position: Position = .{},
     /// This is the column that the cursor will try to be on, if possible.
     /// You could also say this column wants to be the one that the cursor is on.
     ///
@@ -69,16 +69,6 @@ pub const Cursor = struct {
         const current_line_length = @intCast(u16, lines[self.position.row].items.len);
         if (self.position.column > current_line_length)
             self.position.column = current_line_length;
-    }
-
-    /// Inserts content into a line.
-    fn insertSlice(self: *Self, line: *Line, bytes: []const u8) !void {
-        var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
-        while (utf8_iterator.nextCodepoint()) |char| {
-            try line.insert(self.position.column, char);
-            self.position.column += 1;
-        }
-        self.setAmbitiousColumn();
     }
 
     /// Returns the index of character before the cursor, on the current line.
@@ -191,7 +181,14 @@ pub const Cursor = struct {
     pub fn handleInput(self: *Self, allocator: std.mem.Allocator, allocated_lines: *std.ArrayList(Line), input: terminal.input.Input) !enum { handled, unhandled } {
         const lines = allocated_lines.items;
         switch (input) {
-            .bytes => |bytes| try self.insertSlice(&lines[self.position.row], bytes),
+            .bytes => |bytes| {
+                var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
+                while (utf8_iterator.nextCodepoint()) |char| {
+                    try lines[self.position.row].insert(self.position.column, char);
+                    self.position.column += 1;
+                    self.setAmbitiousColumn();
+                }
+            },
 
             .up => |modifier| {
                 switch (modifier) {
@@ -319,7 +316,11 @@ pub const Cursor = struct {
                 // 3. Insert the new line after the newline
                 try allocated_lines.insert(self.position.row, allocated_line_after_newline);
             },
-            .tab => try self.insertSlice(&lines[self.position.row], "    "),
+            .tab => {
+                try lines[self.position.row].insertSlice(self.position.column, &[4]u21{ ' ', ' ', ' ', ' ' });
+                self.position.column += 4;
+                self.setAmbitiousColumn();
+            },
 
             .backspace => |modifier| {
                 if (self.getPreviousCharIndex() == null) {

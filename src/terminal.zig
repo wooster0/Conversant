@@ -1,6 +1,9 @@
 //! This abstracts everything related to the terminal and provides everything needed for
 //! display, manipulation, and input events.
 //!
+//! This library is not intended for parallel or multi-threaded usage.
+//! It is recommended to be used in a synchronized fashion.
+//!
 //! One great reference for this is <https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>.
 
 const std = @import("std");
@@ -140,7 +143,7 @@ const CSI = "\x1b[";
 /// Operating System Command.
 const OSC = "\x1b]";
 
-/// Alert/beep/bell escape sequence.
+/// The alert/beep/bell escape sequence.
 const alert = "\x07";
 
 pub const cursor = struct {
@@ -177,6 +180,13 @@ pub const control = struct {
     }
     pub fn disableAlternativeScreenBuffer() !void {
         try write(CSI ++ "?1049l");
+    }
+
+    pub fn trackFocusChange() !void {
+        try write(CSI ++ "?1004h");
+    }
+    pub fn ignoreFocusChange() !void {
+        try write(CSI ++ "?1004l");
     }
 
     /// Clears the entire terminal.

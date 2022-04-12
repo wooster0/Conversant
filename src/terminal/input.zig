@@ -1,6 +1,6 @@
 const std = @import("std");
 const os = std.os;
-const assert = std.debug.assert;
+const debug = std.debug;
 
 const stdin = std.io.getStdIn();
 
@@ -22,8 +22,6 @@ const ShiftCtrlModifier = enum {
 };
 
 pub const Input = union(enum) {
-    bytes: []const u8,
-
     up: AltModifier,
     down: AltModifier,
     left: CtrlModifier,
@@ -43,6 +41,12 @@ pub const Input = union(enum) {
     ctrl_s,
 
     esc,
+
+    /// This is returned for every other input.
+    ///
+    /// This could be an input like a single keypress
+    /// or a character that was input using an IME.
+    bytes: []const u8,
 
     /// An external file descriptor other than the standard input stream that has input to read.
     readable_file_descriptor: os.fd_t,
@@ -75,7 +79,7 @@ pub fn addPollFileDescriptor(file_descriptor: os.fd_t) !void {
 
     poll_file_descriptors[filled_poll_file_descriptor_count] = .{
         .fd = file_descriptor,
-        .events = std.os.POLL.IN, // Await input
+        .events = os.POLL.IN, // Await input
         .revents = undefined,
     };
     filled_poll_file_descriptor_count += 1;
@@ -114,10 +118,8 @@ pub fn poll() !?Input {
         if (file_descriptor.revents == os.POLL.IN) {
             // This file descriptor is ready to be read
             if (file_descriptor.fd == stdin.handle) {
-                // Read input
-                var bytes: [6]u8 = undefined;
-                var byte_count = try stdin.read(&bytes);
-                return parseInput(bytes[0..byte_count]);
+                // Read terminal input
+                return try readInput(stdin);
             } else {
                 // It's an external file descriptor not managed by us so pass it on
                 return Input{ .readable_file_descriptor = file_descriptor.fd };
@@ -128,14 +130,21 @@ pub fn poll() !?Input {
     unreachable;
 }
 
-fn parseInput(buffer: []const u8) Input {
-    return switch (buffer[0]) {
+var input_buffer: [6]u8 = undefined;
+
+fn readInput(file: std.fs.File) !Input {
+    const byte_count = try file.read(&input_buffer);
+    return parseInput(input_buffer[0..byte_count]);
+}
+
+fn parseInput(bytes: []u8) Input {
+    return switch (bytes[0]) {
         '\x1b' => {
-            if (buffer.len == 1)
+            if (bytes.len == 1)
                 return .esc;
-            return switch (buffer[1]) {
+            return switch (bytes[1]) {
                 '[' => {
-                    return switch (buffer[2]) {
+                    return switch (bytes[2]) {
                         'A' => .{ .up = .none },
                         'B' => .{ .down = .none },
                         'C' => .{ .right = .none },
@@ -143,17 +152,17 @@ fn parseInput(buffer: []const u8) Input {
                         'F' => .{ .end = .none },
                         'H' => .{ .home = .none },
                         '1' => {
-                            assert(buffer[3] == ';');
-                            switch (buffer[4]) {
+                            debug.assert(bytes[3] == ';');
+                            return switch (bytes[4]) {
                                 '3' => {
-                                    return switch (buffer[5]) {
+                                    return switch (bytes[5]) {
                                         'A' => .{ .up = .alt },
                                         'B' => .{ .down = .alt },
                                         else => unreachable,
                                     };
                                 },
                                 '5' => {
-                                    return switch (buffer[5]) {
+                                    return switch (bytes[5]) {
                                         'C' => .{ .right = .ctrl },
                                         'D' => .{ .left = .ctrl },
                                         'F' => .{ .end = .ctrl },
@@ -162,16 +171,16 @@ fn parseInput(buffer: []const u8) Input {
                                     };
                                 },
                                 else => unreachable,
-                            }
+                            };
                         },
                         '3' => {
-                            return switch (buffer[3]) {
+                            return switch (bytes[3]) {
                                 '~' => .{ .delete = .none },
                                 ';' => {
-                                    return switch (buffer[4]) {
+                                    return switch (bytes[4]) {
                                         '5' => {
                                             // For XTerm
-                                            assert(buffer[5] == '~');
+                                            debug.assert(bytes[5] == '~');
                                             return .{ .delete = .ctrl };
                                         },
                                         '2' => .{ .delete = .shift },
@@ -182,11 +191,11 @@ fn parseInput(buffer: []const u8) Input {
                             };
                         },
                         '5' => {
-                            assert(buffer[3] == '~');
+                            debug.assert(bytes[3] == '~');
                             return .page_up;
                         },
                         '6' => {
-                            assert(buffer[3] == '~');
+                            debug.assert(bytes[3] == '~');
                             return .page_down;
                         },
                         else => unreachable,
@@ -202,6 +211,6 @@ fn parseInput(buffer: []const u8) Input {
         0x17 => .{ .backspace = .ctrl },
         0x08 => .{ .backspace = .ctrl }, // For XTerm
         19 => .ctrl_s,
-        else => .{ .bytes = buffer },
+        else => .{ .bytes = bytes },
     };
 }
