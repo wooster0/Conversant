@@ -215,7 +215,7 @@ fn parseInput(buffer: []const u8) Input {
 
     if (@import("builtin").mode == .Debug) {
         debug.assert(buffer.len >= 1 and buffer.len <= 4);
-        const valid_utf8 = std.unicode.utf8ValidateSlice(buffer);
+        const valid_utf8 = @import("../unicode.zig").utf8ValidateSlice(buffer);
         if (!valid_utf8)
             debug.panic("failed to parse unknown and non-UTF-8 input: {any}", .{buffer});
     }

@@ -1,9 +1,9 @@
 const std = @import("std");
+const unicode = @import("../unicode.zig");
 
 const terminal = @import("../terminal.zig");
 const Position = @import("../main.zig").Position;
 const editor = @import("../editor.zig");
-const Char = editor.Char;
 const Line = editor.Line;
 
 pub const Cursor = struct {
@@ -32,18 +32,18 @@ pub const Cursor = struct {
     ambitiousColumn: u16 = 0,
 
     /// Counts all full-width characters in the string.
-    fn countFullWidthChars(string: []const Char) !u16 {
+    fn countFullWidthChars(string: []const unicode.Char) u16 {
         var full_width_char_count: u16 = 0;
         for (string) |char| {
-            if (try editor.isFullWidthChar(char))
+            if (editor.isFullWidthChar(char))
                 full_width_char_count += 1;
         }
         return full_width_char_count;
     }
 
-    pub fn draw(self: Self, current_line_chars: []const Char, max_line_number_width: u16, wrap_count: u16, row_offset: u16) !void {
+    pub fn draw(self: Self, current_line_chars: []const unicode.Char, max_line_number_width: u16, wrap_count: u16, row_offset: u16) !void {
         // TODO: Cursor positioning doesn't work well if a double width character is the one that causes a wrap to the next line
-        const columns = self.position.column + try countFullWidthChars(current_line_chars[0..self.position.column]);
+        const columns = self.position.column + countFullWidthChars(current_line_chars[0..self.position.column]);
         const max_line_content_width = terminal.size.width - max_line_number_width;
         try terminal.cursor.setPosition(Position{
             .row = (self.position.row -| row_offset) + wrap_count + columns / max_line_content_width,
@@ -73,8 +73,8 @@ pub const Cursor = struct {
 
     /// Inserts content into a line.
     fn insertSlice(self: *Self, line: *Line, bytes: []const u8) !void {
-        var utf8_iterator = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
-        while (utf8_iterator.nextCodepoint()) |char| {
+        var utf8_iterator = unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
+        while (utf8_iterator.nextChar()) |char| {
             try line.insert(self.position.column, char);
             self.position.column += 1;
         }
@@ -109,7 +109,7 @@ pub const Cursor = struct {
     fn removePreviousSuccessiveSpaces(self: *Self, line: *Line) bool {
         var space_removed = false;
         while (self.getPreviousCharIndex()) |char_to_remove_index| {
-            if (line.items[char_to_remove_index] == ' ') {
+            if (line.items[char_to_remove_index].codepoint == ' ') {
                 _ = line.orderedRemove(char_to_remove_index);
                 self.position.column -= 1;
                 space_removed = true;
@@ -146,15 +146,15 @@ pub const Cursor = struct {
         const current_line_chars = lines[self.position.row].items;
         if (self.getPreviousCharIndex()) |current_char_index| {
             self.position.column -= 1;
-            if (current_line_chars[current_char_index] == ' ') {
+            if (current_line_chars[current_char_index].codepoint == ' ') {
                 // Go to the right until we hit a non-space or EOL
                 while (self.getPreviousCharIndex()) |char_index| : (self.position.column -= 1)
-                    if (current_line_chars[char_index] != ' ')
+                    if (current_line_chars[char_index].codepoint != ' ')
                         break;
             }
             // Go to the right until we hit a space or EOL
             while (self.getPreviousCharIndex()) |char_index| : (self.position.column -= 1)
-                if (current_line_chars[char_index] == ' ')
+                if (current_line_chars[char_index].codepoint == ' ')
                     break;
         } else if (self.position.row != 0) {
             self.position.row -= 1;
@@ -168,15 +168,15 @@ pub const Cursor = struct {
         const current_line_chars = lines[self.position.row].items;
         if (self.getCurrentCharIndex(lines)) |current_char_index| {
             self.position.column += 1;
-            if (current_line_chars[current_char_index] == ' ') {
+            if (current_line_chars[current_char_index].codepoint == ' ') {
                 // Go to the right until we hit a non-space or EOL
                 while (self.getCurrentCharIndex(lines)) |char_index| : (self.position.column += 1)
-                    if (current_line_chars[char_index] != ' ')
+                    if (current_line_chars[char_index].codepoint != ' ')
                         break;
             }
             // Go to the right until we hit a space or EOL
             while (self.getCurrentCharIndex(lines)) |char_index| : (self.position.column += 1)
-                if (current_line_chars[char_index] == ' ')
+                if (current_line_chars[char_index].codepoint == ' ')
                     break;
         } else if (self.position.row != lines.len - 1) {
             self.position.row += 1;
@@ -353,7 +353,7 @@ pub const Cursor = struct {
                         var remove_spaces = true;
                         while (self.getPreviousCharIndex()) |char_to_remove_index| {
                             const current_line = &lines[self.position.row];
-                            if (current_line.items[char_to_remove_index] == ' ') {
+                            if (current_line.items[char_to_remove_index].codepoint == ' ') {
                                 if (remove_spaces) {
                                     _ = lines[self.position.row].orderedRemove(char_to_remove_index);
                                     self.position.column -= 1;
@@ -417,7 +417,7 @@ pub const Cursor = struct {
                             var remove_spaces = true;
                             while (self.getCurrentCharIndex(lines)) |char_to_remove_index| {
                                 const current_line = &lines[self.position.row];
-                                if (current_line.items[char_to_remove_index] == ' ') {
+                                if (current_line.items[char_to_remove_index].codepoint == ' ') {
                                     if (remove_spaces) {
                                         _ = current_line.orderedRemove(char_to_remove_index);
                                         const space_removed = self.removePreviousSuccessiveSpaces(current_line);

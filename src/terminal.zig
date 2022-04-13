@@ -31,9 +31,10 @@ const writing = struct {
         try buffered_stdout_writer.writeAll(bytes);
     }
 
-    fn writeChar(char: u21) !void {
+    /// Writes the bytes of this Unicode codepoint as UTF-8 to the terminal.
+    fn writeChar(char: @import("unicode.zig").Char) !void {
         var bytes: [4]u8 = undefined;
-        const byte_count = try std.unicode.utf8Encode(char, &bytes);
+        const byte_count = char.utf8Encode(&bytes);
         try writing.write(bytes[0..byte_count]);
     }
 

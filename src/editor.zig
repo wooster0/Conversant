@@ -11,7 +11,7 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 const mem = std.mem;
 const fs = std.fs;
-const unicode = std.unicode;
+const unicode = @import("unicode.zig");
 const heap = std.heap;
 
 const app_name = @import("main.zig").app_name;
@@ -20,22 +20,19 @@ const background = @import("editor/background.zig");
 const terminal = @import("terminal.zig");
 const Position = @import("main.zig").Position;
 
-/// A Unicode codepoint that, when required, can be decoded to bytes on the fly.
-pub const Char = u21;
-
-pub const Line = ArrayList(Char);
+pub const Line = ArrayList(unicode.Char);
 
 /// Returns whether or not the given character is full-width.
 /// 'Ａ' is a full-width character.
 /// 'A' is a half-width character.
-pub fn isFullWidthChar(char: Char) !bool {
-    switch (char) {
+pub fn isFullWidthChar(char: unicode.Char) bool {
+    switch (char.codepoint) {
         0xFF60...0xFF9F => return false, // Half-width katakana
         else => {
             // Most of the time this check works pretty well for many if not most languages,
             // including Japanese (excluding half-width katakana which is handled above),
             // Korean, Chinese, European languages etc.
-            return (try unicode.utf8CodepointSequenceLength(char)) >= 3;
+            return char.utf8CodepointSequenceLength() >= 3;
         },
     }
 }
@@ -154,22 +151,22 @@ pub const Editor = struct {
                         try lines.append(line);
                         line = Line.init(allocator);
                     } else {
-                        try line.append(@as(Char, first_byte));
+                        try line.append(unicode.Char{ .codepoint = first_byte });
                     }
                 },
                 // All others are non-ASCII and if any of these `readByte`s
                 // reach the end of the stream, it means we have invalid UTF-8.
                 2 => {
                     var bytes = [2]u8{ first_byte, try reader.readByte() };
-                    try line.append(try unicode.utf8Decode2(&bytes));
+                    try line.append(try unicode.Char.utf8Decode2(&bytes));
                 },
                 3 => {
                     var bytes = [3]u8{ first_byte, try reader.readByte(), try reader.readByte() };
-                    try line.append(try unicode.utf8Decode3(&bytes));
+                    try line.append(try unicode.Char.utf8Decode3(&bytes));
                 },
                 4 => {
                     var bytes = [4]u8{ first_byte, try reader.readByte(), try reader.readByte(), try reader.readByte() };
-                    try line.append(try unicode.utf8Decode4(&bytes));
+                    try line.append(try unicode.Char.utf8Decode4(&bytes));
                 },
                 else => unreachable,
             }
@@ -255,10 +252,7 @@ pub const Editor = struct {
                         var bytes: [4]u8 = undefined;
                         for (self.lines.items) |line| {
                             for (line.items) |char| {
-                                // We verified that we are dealing with
-                                // valid UTF-8 when we loaded the content
-                                const byte_count = unicode.utf8Encode(char, &bytes) catch unreachable;
-
+                                const byte_count = char.utf8Encode(&bytes);
                                 try file.handle.writeAll(bytes[0..byte_count]);
                             }
                             try file.handle.writeAll("\n");
@@ -344,8 +338,8 @@ pub const Editor = struct {
         var wrap_count: u16 = 0;
         var line_width = max_line_number_width;
         for (line.items) |char| {
-            const char_width: u16 = if (try isFullWidthChar(char)) 2 else 1;
-            if ((try isFullWidthChar(char)) and line_width + char_width >= terminal.size.width) {
+            const char_width: u16 = if (isFullWidthChar(char)) 2 else 1;
+            if (isFullWidthChar(char) and line_width + char_width >= terminal.size.width) {
                 if (!is_last_line)
                     try terminal.cursor.setToBeginningOfNextLine();
                 var space_count = max_line_number_width;
@@ -384,7 +378,7 @@ fn getEditor(content: []const u8) !Editor {
     while (line_iterator.next()) |line| {
         var allocatedLine = Line.init(allocator);
         var utf8_iterator = unicode.Utf8Iterator{ .bytes = line, .i = 0 };
-        while (utf8_iterator.nextCodepoint()) |char|
+        while (utf8_iterator.nextChar()) |char|
             try allocatedLine.append(char);
         try lines.append(allocatedLine);
     }
@@ -403,7 +397,7 @@ fn expectEditor(editor: Editor, expected: []const u8) !void {
 
         var char_index: usize = 0;
         var utf8_iterator = unicode.Utf8Iterator{ .bytes = expected_line, .i = 0 };
-        while (utf8_iterator.nextCodepoint()) |expected_char| : (char_index += 1) {
+        while (utf8_iterator.nextChar()) |expected_char| : (char_index += 1) {
             try expect(char_index < actual_line.len);
             try expectEqual(expected_char, actual_line[char_index]);
         }
@@ -768,8 +762,14 @@ test "Unicode" {
 
     const content_reader = std.io.fixedBufferStream(content).reader();
     const lines = try Editor.readLines(allocator, content_reader);
-    for (lines.items) |line, index|
-        try expect(mem.eql(Char, line.items, editor.lines.items[index].items));
+    for (lines.items) |line, row| {
+        for (line.items) |char, column| {
+            try expectEqual(
+                char.codepoint,
+                editor.lines.items[row].items[column].codepoint,
+            );
+        }
+    }
 
     for (lines.items) |line|
         line.deinit();
@@ -777,20 +777,20 @@ test "Unicode" {
 
     try editor.deinit();
 
-    try expectEqual(false, try isFullWidthChar('A'));
-    try expectEqual(true, try isFullWidthChar('あ'));
-    try expectEqual(false, try isFullWidthChar('Z'));
-    try expectEqual(true, try isFullWidthChar('〜'));
-    try expectEqual(false, try isFullWidthChar('#'));
-    try expectEqual(true, try isFullWidthChar('字'));
-    try expectEqual(false, try isFullWidthChar('Å'));
-    try expectEqual(true, try isFullWidthChar('𒀇'));
-    try expectEqual(false, try isFullWidthChar('ｱ'));
-    try expectEqual(true, try isFullWidthChar('𒀈'));
-    try expectEqual(false, try isFullWidthChar('｡'));
-    try expectEqual(true, try isFullWidthChar('Ａ'));
-    try expectEqual(false, try isFullWidthChar('ﾟ'));
-    try expectEqual(true, try isFullWidthChar('ㄱ'));
-    try expectEqual(false, try isFullWidthChar(' '));
-    try expectEqual(true, try isFullWidthChar('차'));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('A')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('あ')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('Z')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('〜')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('#')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('字')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('Å')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('𒀇')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('ｱ')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('𒀈')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('｡')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('Ａ')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init('ﾟ')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('ㄱ')));
+    try expectEqual(false, isFullWidthChar(try unicode.Char.init(' ')));
+    try expectEqual(true, isFullWidthChar(try unicode.Char.init('차')));
 }
